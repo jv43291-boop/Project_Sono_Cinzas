@@ -12,11 +12,15 @@ quero um jogo com o mesmo estilo de hollow knight com graficos bonitos e um clim
 6. Fatia: uma fatia do jogo assim eu tenho uma noção de como o caminho sera tomado
 7. Plataforma: o jogo dever ser construido tanto para rodar no navegador quanto no android seguindo isso pode construir
 
+After play: eu joguei ficou muito bom bem melhor do que eu imaginei mais quero que melhore se tiver ideias
+After play: melhorias escolhidas: Peso da luta, Os que lembram, Mais mundo, Celular. Melhor momento: O visual e o clima. Pior momento: Nada incomodou.
+After play: pensei na ia se adaptando no jogo tipo mudando inimigos e mapas inesperadamente falando coisas em momentos não calculados
+
 **Pitch:** Uma figura pequena atravessa uma floresta queimada e silenciosa, onde cada morte é um pesadelo do qual você acorda e os poucos que restam lembram de já ter te matado.
 
 **Genre:** metroidvania com lutas de soulslike
 
-**Controls:** teclado: setas (ou A/D) andam, Z (ou Espaço) pula, X golpeia, C dá o dash depois de ganho, segurar S (ou seta para baixo) parado cura *(guessed)*. Android: botões de toque na tela, direcional à esquerda e pular, golpear, dash e curar à direita *(guessed)*.
+**Controls:** teclado: setas (ou A/D) andam, Z (ou Espaço) pula e, com as asas, pula de novo no ar, X golpeia (com seta para cima, para cima; no ar com seta para baixo, para baixo, e quica), C dá o dash depois de ganho, segurar S (ou seta para baixo) parado cura *(guessed)*. Um controle Bluetooth também funciona. Android: botões de toque na tela, direcional à esquerda e pular, golpear, dash e curar à direita *(guessed)*.
 
 **Question:** o silêncio e o luto chegam de verdade em quem joga, e a luta punitiva dá vontade de tentar de novo?
 
@@ -59,6 +63,12 @@ Leads: metroidvania conduz o mapa, as travas, os controles e a câmera · soulsl
 - [x] 2 segredos escondidos
 - [ ] Clima: camadas com profundidade, cinza caindo, luz, e som ambiente gerado por código
 - [ ] Roda no navegador do computador e no navegador do Android, com botões de toque na tela
+- [x] Golpe para baixo que quica em inimigos e espinhos, e mais impacto em cada acerto
+- [x] Segunda fase dos guardiões: com metade da vida, enfurecem
+- [x] Inimigos que mudam o jeito de lutar depois de te matar 4 vezes, comentam como você morreu, e um registro das mortes na pausa
+- [x] Área nova: A Garganta, O Lago de Fuligem e O Ninho, com a Rainha de Fuligem e as asas de cinza (segundo pulo)
+- [x] Sete ecos espalhados que contam o que queimou a floresta
+- [ ] No toque, câmera mais perto (figura maior), vibração ao levar dano e controle Bluetooth
 
 ## Your systems
 - acordar como se tivesse tido um pesadelo, em áreas com saves automáticos · in the slice
@@ -66,9 +76,11 @@ Leads: metroidvania conduz o mapa, as travas, os controles e a câmera · soulsl
 - novas habilidades derrotando bosses · in the slice
 - itens mais fortes · thin stand-in *(guessed)*
 - escala progressiva derrotando inimigos · thin stand-in *(guessed)*
+- inimigos que se adaptam a como você joga · in the slice
+- uma história contada pelos lugares (ecos) · in the slice
 
 ## Keep
--
+- o visual e o clima *(you said)*
 
 ## Avoid
 - O nome, a arte, os personagens e a interface de Hollow Knight
@@ -77,11 +89,11 @@ Leads: metroidvania conduz o mapa, as travas, os controles e a câmera · soulsl
 ## Out of scope
 - Um mapa grande, com muitas áreas e muitos movimentos: grow it
 - Um boss guardando cada novo movimento: change it after play
-- Segunda fase dos bosses: change it after play
 - Viagem rápida entre saves: change it after play
 - Amuletos que mudam seus movimentos: add it as a feature
 - Armas, armaduras e builds: add it as a feature
-- Uma história contada pelos itens e lugares, e o objetivo final: grow it
+- O objetivo final da história: grow it
+- IA dentro do jogo, mudando inimigos e mapas sem aviso e falando em momentos não calculados: add it as a feature
 - Um app Android instalável (APK na loja): não é construído aqui; no lugar, o jogo roda no navegador do Android com controles de toque, que nenhuma checagem automática joga
 
 ## Build order

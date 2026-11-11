@@ -87,6 +87,9 @@ function sfx(name) {
     case 'wake': sNoise(0.5, 0.2, 'bandpass', 500, 1500, 1.2, SND.bus, 0.3); sNoise(0.7, 0.12, 'bandpass', 1300, 400, 1.2, SND.bus, 0.45); break;
     case 'break': sNoise(0.35, 0.3, 'lowpass', 1800, 200, 0.8); sTone(180, 0.2, 'square', 0.08, 70); break;
     case 'gate': sNoise(0.6, 0.2, 'lowpass', 400, 90, 0.8); sTone(98, 0.6, 'triangle', 0.16, 65); break;
+    case 'wings': sNoise(0.3, 0.16, 'bandpass', 900, 300, 0.8); sTone(520, 0.25, 'sine', 0.05, 780); break;
+    case 'eco': pluck(659.25, 0.1, 4); pluck(987.77, 0.06, 4.6); break;
+    case 'rage': { const g = sTone(64, 1.5, 'sawtooth', 0.22, 40, SND.bus, 0.1); if (g) g.connect(SND.rev); sTone(311, 1.5, 'sine', 0.1, 233, SND.rev, 0.2); sNoise(1.3, 0.22, 'bandpass', 300, 110, 1.2, SND.bus, 0.15); break; }
     case 'end': pluck(146.83, 0.2, 6); pluck(220, 0.16, 6); pluck(293.66, 0.14, 6); pluck(369.99, 0.12, 6); pluck(440, 0.1, 7); break;
   }
 }

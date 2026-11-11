@@ -73,8 +73,8 @@ const W = 1280, H = 720;        // logical size
 const PIXEL = false;
 const FONT = "'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif";
 const TITLE = 'Sono de Cinza';
-const CONTROLS = ['Setas ou A/D: andar', 'Z ou Espaço: pular (segure para ir mais alto)', 'X: golpear (com ↑, para cima)',
-  'C: ímpeto, depois que você o ganhar', 'Segurar ↓ parado: curar, gastando calor', 'P: pausa e mapa · M: som']; // shown on the title screen
+const CONTROLS = ['Setas ou A/D: andar', 'Z ou Espaço: pular (segure para ir mais alto)', 'X: golpear (com ↑, para cima; no ar com ↓, para baixo, e quica)',
+  'C: ímpeto, depois que você o ganhar', 'Segurar ↓ parado: curar, gastando calor', 'P: pausa e mapa · M: som · um controle também funciona']; // shown on the title screen
 const clock = window.GAME_CLOCK || { now: () => performance.now() / 1000 }; // a check may inject one
 const CHEAP = params.get('render') === 'cheap'; // a headless shot or check; players never see it
 let seed;
@@ -110,8 +110,23 @@ function text(s, x, y, size, c, align = 'center') {
 // ---- Input: keys by position (event.code), OS key repeat ignored ------------------------
 const down = new Set(), hit = new Set();
 const pressed = code => hit.has(code); // true for one step after the key goes down
-const ACT = { left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'], up: ['ArrowUp', 'KeyW'], down: ['ArrowDown', 'KeyS'],
-  jump: ['KeyZ', 'Space'], attack: ['KeyX', 'KeyJ'], dash: ['KeyC', 'KeyK', 'ShiftLeft'], pause: ['KeyP', 'Escape'] };
+const ACT = { left: ['ArrowLeft', 'KeyA', 'PadLeft'], right: ['ArrowRight', 'KeyD', 'PadRight'], up: ['ArrowUp', 'KeyW', 'PadUp'], down: ['ArrowDown', 'KeyS', 'PadDown', 'PadY'],
+  jump: ['KeyZ', 'Space', 'PadA'], attack: ['KeyX', 'KeyJ', 'PadX'], dash: ['KeyC', 'KeyK', 'ShiftLeft', 'PadB', 'PadR'], pause: ['KeyP', 'Escape', 'PadStart'] };
+// Controle (Bluetooth ou cabo): direcional ou analógico andam; A pula, X golpeia, B ou gatilho direito dão o ímpeto,
+// Y ou ↓ curam, Start pausa. Lido a cada quadro e traduzido nas mesmas ações do teclado.
+const PADKEYS = ['PadLeft', 'PadRight', 'PadUp', 'PadDown', 'PadA', 'PadB', 'PadX', 'PadY', 'PadR', 'PadStart'], padPrev = {};
+function pollPad() {
+  if (!navigator.getGamepads) return;
+  let gp = null; try { for (const g of navigator.getGamepads()) if (g && g.connected) { gp = g; break; } } catch (e) { return; }
+  const now = {};
+  if (gp) {
+    const b = i => !!(gp.buttons[i] && gp.buttons[i].pressed), ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    now.PadLeft = b(14) || ax < -0.4; now.PadRight = b(15) || ax > 0.4; now.PadUp = b(12) || ay < -0.55; now.PadDown = b(13) || ay > 0.6;
+    now.PadA = b(0); now.PadB = b(1); now.PadX = b(2); now.PadY = b(3); now.PadR = b(5) || b(7); now.PadStart = b(9);
+  }
+  for (const k of PADKEYS) { const on = !!now[k]; if (on && !padPrev[k]) { down.add(k); hit.add(k); startAudio(); } else if (!on && padPrev[k]) down.delete(k); padPrev[k] = on; }
+}
+const confirmTap = () => pressed('Enter') || pressed('Space') || pressed('KeyZ') || pressed('PadA') || pressed('PadStart');
 const held = a => ACT[a].some(c => down.has(c));
 const tapped = a => ACT[a].some(c => hit.has(c));
 addEventListener('keydown', e => {
@@ -178,7 +193,7 @@ const SAVE_KEY = 'sono-de-cinza-v1';
 function loadSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 function save() {
   if (params.get('room')) return; // sala escolhida pelo endereço: não mexe no save
-  const s = state, o = { flags: s.flags, lit: s.lit, seen: s.seen, deaths: s.deaths, totalDeaths: s.totalDeaths, brasas: s.brasas, level: s.level,
+  const s = state, o = { flags: s.flags, lit: s.lit, seen: s.seen, ecos: s.ecos, deaths: s.deaths, deathHow: s.deathHow, totalDeaths: s.totalDeaths, brasas: s.brasas, level: s.level,
     calor: s.calor, maxLife: s.p.maxLife, spawn: s.spawn, time: Math.round(s.time), wallHp: s.wallHp };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* sem armazenamento: o jogo segue sem save */ }
 }
@@ -186,27 +201,29 @@ function wipeSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 
 
 // ---- O jogo ---------------------------------------------------------------------------
 let scene, state;
-const fx = { parts: [], trail: [], shake: 0, art: null, artRoom: '', snap: null, shards: [], say: null, titleT: 0, confirmNew: 0 };
+const fx = { parts: [], trail: [], shake: 0, kick: 0, zoom: 1, art: null, artRoom: '', snap: null, shards: [], say: null, eco: null, titleT: 0, confirmNew: 0 };
 const SPEC = {
   carcaca: { w: 40, h: 70, hp: 'carcaca_life', brasas: 2, kb: 70 },
   mariposa: { w: 30, h: 24, hp: 'mariposa_life', brasas: 1, kb: 260 },
   espinheiro: { w: 44, h: 24, hp: 'espinheiro_life', brasas: 1, kb: 150 },
   vigia: { w: 80, h: 104, hp: 'vigia_life', brasas: 10, kb: 0, boss: true },
   enlutada: { w: 60, h: 120, hp: 'enlutada_life', brasas: 20, kb: 0, boss: true },
+  rainha: { w: 120, h: 84, hp: 'rainha_life', brasas: 15, kb: 0, boss: true },
 };
 function makeEnt(d, id) {
   const s = SPEC[d.k];
   const e = { id, k: d.k, x: d.x * T + T / 2 - s.w / 2, y: d.y * T - s.h, w: s.w, h: s.h, vx: 0, vy: 0, hp: tune[s.hp], face: -1, st: 'idle', t: 0, at: 0,
-    alive: true, flash: 0, ground: false, hx: 0, hy: 0, cd: 0, rise: 1, n: 0, tx: 0, ty: 0, alpha: 1, hitWall: 0, last: '' };
-  if (d.k === 'carcaca' && d.sleeping) { e.st = 'sleep'; e.rise = 0; e.face = 1; }
+    alive: true, flash: 0, ground: false, hx: 0, hy: 0, hy2: 0, cd: 0, rise: 1, n: 0, tx: 0, ty: 0, alpha: 1, hitWall: 0, last: '', rage: 0, tmp: 0, tilt: 0 };
+  if (d.k === 'carcaca' && d.sleeping && !mem('carcaca')) { e.st = 'sleep'; e.rise = 0; e.face = 1; } // quem já te matou muito não dorme mais: espera de pé
   if (d.k === 'mariposa') { e.y = d.y * T - s.h / 2; e.hx = e.x + s.w / 2; e.hy = d.y * T; e.st = 'hover'; e.cd = 0.8; }
   if (d.k === 'espinheiro') { e.st = 'walk'; e.cd = tune.espinheiro_interval * 0.5; }
   if (d.k === 'vigia') { e.st = 'wait'; e.face = 1; }
   if (d.k === 'enlutada') { e.st = 'wait'; e.y = d.y * T - 44 - s.h; e.hx = e.x; e.hy = e.y; }
+  if (d.k === 'rainha') { e.st = 'wait'; e.y = d.y * T - 290 - s.h / 2; e.hx = e.x; e.hy = e.y; }
   return e;
 }
 function newPlayer(x, y) {
-  return { x, y, w: 22, h: 38, vx: 0, vy: 0, face: 1, ground: false, coy: 0, buf: 0, jumping: false, atk: -1, atkCd: 0, atkUp: false, atkHit: [],
+  return { x, y, w: 22, h: 38, vx: 0, vy: 0, face: 1, ground: false, coy: 0, buf: 0, jumping: false, jump2: false, land: 0, atk: -1, atkCd: 0, atkDir: 0, atkHit: [],
     dashT: 0, dashCd: 0, dashUsed: false, dashDir: 1, inv: 0, lock: 0, heal: 0, life: tune.player_life, maxLife: tune.player_life, t: 0, safeX: x, safeY: y, hitWall: 0 };
 }
 function enterRoom(id, x, y) {
@@ -214,21 +231,23 @@ function enterRoom(id, x, y) {
   r.ents.forEach((d, i) => { const eid = id + ':' + i; if (!state.dead[eid]) state.ents.push(makeEnt(d, eid)); });
   if (r.boss && !state.flags[r.boss.k]) state.ents.push(makeEnt(r.boss, id + ':boss'));
   const p = state.p; p.x = x; p.y = y; p.safeX = x; p.safeY = y;
-  state.cam.x = clamp(p.x + p.w / 2 - W / 2, 0, r.w * T - W); state.cam.y = clamp(p.y + p.h / 2 - H * 0.58, 0, r.h * T - H);
-  state.fade = 1; fx.parts.length = 0; fx.trail.length = 0; fx.say = null;
+  const VW = W / fx.zoom, VH = H / fx.zoom;
+  state.cam.x = clamp(p.x + p.w / 2 - VW / 2, 0, r.w * T - VW); state.cam.y = clamp(p.y + p.h / 2 - VH * 0.58, 0, r.h * T - VH);
+  state.fade = 1; fx.parts.length = 0; fx.trail.length = 0; fx.say = null; fx.kick = 0;
 }
 function reset() {
   seed = Number(params.get('seed')) || CONFIG.seed;
   // state.gained: what this run gained or learned, the high the ending shows.
   const st = ROOMS.R1.start, px = st.x * T, py = st.y * T - 38;
   state = { t: 0, time: 0, score: 0, gained: '', mode: 'wake', modeT: 0, room: 'R1', p: newPlayer(px, py), cam: { x: 0, y: 0 },
-    flags: { impeto: false, lamina: false, fragmento: false, atalho: false, vigia: false, enlutada: false, quebrada: false, ravina: false },
-    lit: {}, seen: {}, deaths: {}, totalDeaths: 0, brasas: 0, level: 1, calor: 0, wallHp: 2, spawn: { room: 'R1', x: px, y: py },
+    flags: { impeto: false, asas: false, lamina: false, fragmento: false, atalho: false, vigia: false, rainha: false, enlutada: false, quebrada: false, ravina: false, muro: false },
+    lit: {}, seen: {}, ecos: {}, deaths: {}, deathHow: {}, bye: {}, wind: 0, poseItem: '', totalDeaths: 0, brasas: 0, level: 1, calor: 0, wallHp: 2, spawn: { room: 'R1', x: px, y: py },
     ents: [], shots: [], dead: {}, greeted: {}, fight: false, hitstop: 0, fade: 1, killer: '', killLine: '', killCount: 0, banner: null, endGrow: 0, won: false, first: true };
   const dbg = params.get('room'); // ?room=R5&impeto=1&lamina=1: começa numa sala, para olhar e testar
   if (dbg && ROOMS[dbg]) {
     if (params.get('impeto')) state.flags.impeto = true;
     if (params.get('lamina')) state.flags.lamina = true;
+    if (params.get('asas')) state.flags.asas = true;
     const r = ROOMS[dbg], sx = Number(params.get('x')) || (r.start ? r.start.x : r.boss ? (r.boss.trigger > r.boss.x ? r.w - 4 : 4) : 4);
     let sy = 0; while (sy < r.h && r.g[sy * r.w + sx] === 1) sy++; while (sy < r.h && r.g[sy * r.w + sx] !== 1) sy++;
     if (params.get('y')) sy = Number(params.get('y'));
@@ -238,7 +257,7 @@ function reset() {
 }
 function continueGame(sv) {
   reset();
-  Object.assign(state.flags, sv.flags || {}); state.lit = sv.lit || {}; state.seen = sv.seen || {}; state.deaths = sv.deaths || {};
+  Object.assign(state.flags, sv.flags || {}); state.lit = sv.lit || {}; state.seen = sv.seen || {}; state.deaths = sv.deaths || {}; state.ecos = sv.ecos || {}; state.deathHow = sv.deathHow || {};
   state.totalDeaths = sv.totalDeaths || 0; state.brasas = sv.brasas || 0; state.level = sv.level || 1; state.calor = sv.calor || 0; state.time = sv.time || 0;
   state.wallHp = sv.wallHp === undefined ? 2 : sv.wallHp; state.p.maxLife = sv.maxLife || tune.player_life; state.p.life = state.p.maxLife;
   if (sv.spawn && ROOMS[sv.spawn.room]) state.spawn = sv.spawn;
@@ -285,27 +304,38 @@ function banner(title, sub, dur = 3.4) { state.banner = { title, sub: sub || '',
 
 // ---- O que lembra de você -------------------------------------------------------------
 function countFor(k) { return (state.deaths[k] || 0) - (tune.speak_from_death - 2); } // desloca os degraus quando o ajuste muda
+const mem = k => (state.deaths[k] || 0) >= tune.adapt_from_death; // já te matou o bastante para mudar o jeito de lutar
+function topHow(k) { // do que você mais morreu para este inimigo
+  const h = state.deathHow[k]; let best = '', n = 0;
+  if (h) for (const q of Object.keys(h)) if (h[q] > n) { n = h[q]; best = q; }
+  return best;
+}
+function say(e, text, dur) { fx.say = { e, text, t: 0, dur: dur || 3.2 + text.length * 0.045, x: e.x + e.w / 2, y: e.y, w: e.w }; sfx('voice'); }
 function greet(e) { // ao te ver de novo, se já te matou vezes o bastante
   if (state.greeted[e.k]) return; state.greeted[e.k] = true;
   const n = countFor(e.k), line = n >= 2 ? lineFor(LINES[e.k].greet, n) : null;
-  if (line) { fx.say = { e, text: line, t: 0, dur: 3.2 + line.length * 0.045 }; sfx('voice'); events.push({ type: 'fala', de: e.k, mortes: state.deaths[e.k] }); }
+  if (line) { say(e, line); events.push({ type: 'fala', de: e.k, mortes: state.deaths[e.k] }); }
 }
+function buzz(ms) { if (tune.vibration) try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* sem vibração neste aparelho */ } }
 
 // ---- Dano ---------------------------------------------------------------------------------
-function hurt(dmg, key, srcX) {
+function hurt(dmg, key, srcX, how) {
   const p = state.p; if (p.inv > 0 || state.mode !== 'play') return;
   p.life -= dmg; p.inv = tune.hurt_invuln; p.vx = (p.x + p.w / 2 >= srcX ? 1 : -1) * 330; p.vy = -310; p.dashT = 0; p.heal = 0; p.atk = -1; p.jumping = false;
-  fx.shake = 12; state.hitstop = 0.09; sfx('hurt'); puff(p.x + p.w / 2, p.y + p.h / 2, 12, PAL.ember, 220, { add: true, life: 0.5 });
-  if (p.life <= 0) die(key);
+  fx.shake = 12; state.hitstop = 0.09; sfx('hurt'); buzz(45); puff(p.x + p.w / 2, p.y + p.h / 2, 12, PAL.ember, 220, { add: true, life: 0.5 });
+  if (p.life <= 0) die(key, how || 'corpo');
 }
-function die(key) {
+function die(key, how) {
   const p = state.p; p.life = 0; state.mode = 'dying'; state.modeT = 0; state.killer = key;
   state.deaths[key] = (state.deaths[key] || 0) + 1; state.totalDeaths++;
-  const n = countFor(key); state.killCount = state.deaths[key]; state.killLine = n >= 2 ? (lineFor(LINES[key].kill, n) || '') : '';
-  fx.snap = null; fx.say = null; sfx('death'); events.push({ type: 'morte', por: key, vezes: state.deaths[key] }); save();
+  const dh = state.deathHow[key] = state.deathHow[key] || {}, hn = dh[how] = (dh[how] || 0) + 1;
+  const n = countFor(key), hl = LINES[key].how && LINES[key].how[how]; // na 2ª e na 4ª morte do mesmo jeito, ele comenta o jeito
+  state.killCount = state.deaths[key];
+  state.killLine = n >= 2 ? ((hl && (hn === 2 || hn === 4) ? hl[hn === 2 ? 0 : 1] : null) || lineFor(LINES[key].kill, n) || '') : '';
+  fx.snap = null; fx.say = null; sfx('death'); buzz([70, 50, 150]); events.push({ type: 'morte', por: key, como: how, vezes: state.deaths[key] }); save();
 }
 function respawn() {
-  state.dead = {}; state.greeted = {}; state.shots = [];
+  state.dead = {}; state.greeted = {}; state.bye = {}; state.shots = [];
   const p = state.p; p.life = p.maxLife; p.vx = 0; p.vy = 0; p.inv = 0; p.atk = -1; p.dashT = 0; p.heal = 0; p.face = 1;
   enterRoom(state.spawn.room, state.spawn.x, state.spawn.y);
   state.mode = 'wake'; state.modeT = 0; sfx('wake');
@@ -316,9 +346,12 @@ function addBrasas(n) {
 }
 function damageEnt(e, dmg, dir) {
   const s = SPEC[e.k];
-  if (e.st === 'dying' || e.st === 'wait' || (e.k === 'enlutada' && e.alpha < 0.6)) return false;
+  if (e.st === 'dying' || e.st === 'wait' || (e.alpha !== undefined && e.alpha < 0.6)) return false;
   e.hp -= dmg; e.flash = 0.12; sfx('hit');
-  puff(e.x + e.w / 2, e.y + e.h * 0.45, 8, '#aab8b5', 200, { life: 0.5 }); puff(e.x + e.w / 2, e.y + e.h * 0.45, 4, PAL.violet, 240, { add: true, life: 0.4 });
+  const cx = e.x + e.w / 2, cy = e.y + e.h * 0.45;
+  puff(cx, cy, 8, '#aab8b5', 200, { life: 0.5 }); puff(cx, cy, 4, PAL.violet, 240, { add: true, life: 0.4 });
+  for (let i = 0; i < 6; i++) { const a = (dir > 0 ? 0 : Math.PI) + (vr() - 0.5) * 1.5, v = 380 + vr() * 320; fx.parts.push({ x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.16 + vr() * 0.1, s: 2, col: '#fff3d6', g: 0, add: false, ln: true }); } // faíscas do acerto
+  fx.kick = dir * (s.boss ? 9 : 6);
   if (e.k === 'carcaca' && e.st === 'sleep') { e.st = 'rise'; e.t = 0; }
   if (s.kb && e.st !== 'windup' && e.st !== 'slam') { e.vx = dir * s.kb; if (e.k === 'mariposa') { e.vy = -120; if (e.st === 'dive') { e.st = 'recover'; e.t = 0; } } }
   if (e.hp <= 0) killEnt(e);
@@ -327,15 +360,17 @@ function damageEnt(e, dmg, dir) {
 function killEnt(e) {
   const s = SPEC[e.k], cx = e.x + e.w / 2, cy = e.y + e.h / 2;
   sfx('kill'); fx.shake = Math.max(fx.shake, s.boss ? 16 : 6);
-  if (s.boss) { e.st = 'dying'; e.t = 0; e.vx = 0; e.vy = 0; state.shots = []; fx.say = { e, text: LINES[e.k].fall, t: 0, dur: 5 }; sfx('voice'); return; }
-  e.alive = false; state.dead[e.id] = true; addBrasas(s.brasas);
+  if (s.boss) { e.st = 'dying'; e.t = 0; e.vx = 0; e.vy = 0; state.shots = []; state.ents = state.ents.filter(q => !q.tmp); say(e, LINES[e.k].fall, 5); buzz(120); return; }
+  e.alive = false;
+  if (!e.tmp) { state.dead[e.id] = true; addBrasas(s.brasas); }
+  if (countFor(e.k) >= 2 && LINES[e.k].end && !state.bye[e.k]) { state.bye[e.k] = true; say(e, LINES[e.k].end, 2.6); } // quem te matou tantas vezes, enfim cai
   puff(cx, cy, 26, '#8a9a98', 260, { life: 0.9, s: 4 }); puff(cx, cy, 10, PAL.violet, 200, { add: true, life: 0.7, g: -60 }); puff(cx, cy, 6, PAL.ember, 160, { add: true, life: 0.9, g: -80 });
 }
 
 // ---- A figura -----------------------------------------------------------------------------
 function updatePlayer(dt) {
   const p = state.p, wasGround = p.ground;
-  p.t += dt; p.inv -= dt; p.atkCd -= dt; p.dashCd -= dt; p.buf -= dt;
+  p.t += dt; p.inv -= dt; p.atkCd -= dt; p.dashCd -= dt; p.buf -= dt; if (p.land > 0) p.land -= dt;
   const grav = 2 * tune.jump_height / (tune.jump_apex_time * tune.jump_apex_time), v0 = grav * tune.jump_apex_time;
   const locked = p.lock > 0; if (locked) p.lock -= dt; // um instante sem controle depois dos espinhos
   const ax = locked ? 0 : (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
@@ -354,51 +389,64 @@ function updatePlayer(dt) {
     fx.trail.push({ x: p.x + p.w / 2, y: p.y + p.h, face: p.face, a: 0.5 });
     if (p.dashT <= 0) p.vx = p.dashDir * tune.run_speed;
   } else {
-    const target = p.heal > 0 ? 0 : ax * tune.run_speed, acc = (p.ground ? 3400 : 2400) * dt;
+    const target = (p.heal > 0 ? 0 : ax * tune.run_speed) + state.wind, acc = (p.ground ? 3400 : 2400) * dt;
     p.vx = p.vx < target ? Math.min(target, p.vx + acc) : Math.max(target, p.vx - acc);
     if (ax && p.atk < 0) p.face = ax;
-    if (tapped('jump') && !locked) p.buf = tune.jump_buffer;
+    if (tapped('jump') && !locked) {
+      if (!p.ground && p.coy <= 0 && state.flags.asas && !p.jump2 && p.heal === 0) { // asas de cinza: um segundo pulo no ar
+        p.vy = -Math.sqrt(2 * grav * tune.double_jump_height); p.jump2 = true; p.jumping = true; p.buf = 0; sfx('wings');
+        puff(p.x + p.w / 2, p.y + p.h, 16, '#cfd8d5', 150, { w: 44, life: 0.6, g: 80 }); puff(p.x + p.w / 2, p.y + p.h, 6, PAL.violetPale, 120, { add: true, life: 0.4, g: 0, w: 40 });
+      } else p.buf = tune.jump_buffer;
+    }
     if (p.buf > 0 && p.coy > 0 && p.heal === 0) { p.vy = -v0; p.buf = 0; p.coy = 0; p.jumping = true; sfx('jump'); puff(p.x + p.w / 2, p.y + p.h, 5, '#9fb0ad', 70, { up: true, life: 0.4 }); }
     if (p.jumping && !held('jump') && p.vy < 0) { p.vy *= tune.jump_cut; p.jumping = false; }
     if (p.vy >= 0) p.jumping = false;
     p.vy = Math.min(tune.max_fall, p.vy + grav * (p.vy > 0 ? tune.fall_gravity : 1) * dt);
   }
-  // golpe: sai na hora
-  if (tapped('attack') && !locked && p.atkCd <= 0 && p.heal === 0) { p.atk = 0; p.atkCd = tune.attack_cooldown; p.atkUp = held('up'); p.atkHit = []; sfx('slash'); }
+  state.wind = 0;
+  // golpe: sai na hora. No ar, com ↓, golpeia para baixo e quica no que acertar.
+  if (tapped('attack') && !locked && p.atkCd <= 0 && p.heal === 0) { p.atk = 0; p.atkCd = tune.attack_cooldown; p.atkDir = held('up') ? 1 : (held('down') && !p.ground ? 2 : 0); p.atkHit = []; sfx('slash'); }
   if (p.atk >= 0) { p.atk += dt; if (p.atk <= 0.13) attackHits(); if (p.atk > 0.22) p.atk = -1; }
   moveBody(p, dt, false);
   if (p.ground) {
-    p.coy = tune.coyote_time; p.dashUsed = false;
-    if (!wasGround) { sfx('land'); puff(p.x + p.w / 2, p.y + p.h, 7, '#9fb0ad', 90, { up: true, life: 0.45 }); }
+    p.coy = tune.coyote_time; p.dashUsed = false; p.jump2 = false;
+    if (!wasGround) { sfx('land'); p.land = 0.14; puff(p.x + p.w / 2, p.y + p.h, 7, '#9fb0ad', 90, { up: true, life: 0.45 }); }
     else if (Math.abs(p.vx) > 100 && Math.floor(p.t * 5.6) !== Math.floor((p.t - dt) * 5.6)) { sfx('step'); puff(p.x + p.w / 2, p.y + p.h, 2, '#9fb0ad', 40, { up: true, life: 0.35 }); }
     const fx0 = Math.floor(p.x / T), fx1 = Math.floor((p.x + p.w - 0.01) / T), fy = Math.floor((p.y + p.h + 2) / T); // último chão seguro
     if (tileCode(fx0, fy) === 1 && tileCode(fx1, fy) === 1 && tileCode(fx0 - 1, fy - 1) !== 3 && tileCode(fx1 + 1, fy - 1) !== 3) { p.safeX = p.x; p.safeY = p.y; }
   } else p.coy -= dt;
-  // espinhos: ferem e te devolvem ao último chão firme
+  // espinhos e fuligem: ferem e te devolvem ao último chão firme
   const tx0 = Math.floor(p.x / T), tx1 = Math.floor((p.x + p.w - 0.01) / T), tyb = Math.floor((p.y + p.h - 4) / T);
-  for (let tx = tx0; tx <= tx1; tx++) if (tileCode(tx, tyb) === 3 && p.y + p.h > tyb * T + 12 && state.mode === 'play') {
-    if (p.inv <= 0.4) { p.inv = 0; hurt(1, 'floresta', p.x + p.w / 2); }
-    if (state.mode === 'play') { p.x = p.safeX; p.y = p.safeY; p.vx = 0; p.vy = 0; p.lock = 0.5; state.fade = 0.7; }
-    break;
+  for (let tx = tx0; tx <= tx1; tx++) {
+    const c = tileCode(tx, tyb);
+    if ((c === 3 && p.y + p.h > tyb * T + 12 || c === 7 && p.y + p.h > tyb * T + 14) && state.mode === 'play') {
+      if (c === 7) puff(p.x + p.w / 2, tyb * T + 8, 14, '#0b1418', 200, { up: true, life: 0.7, s: 4 });
+      if (p.inv <= 0.4) { p.inv = 0; hurt(1, 'floresta', p.x + p.w / 2, c === 7 ? 'fuligem' : 'espinhos'); }
+      if (state.mode === 'play') { p.x = p.safeX; p.y = p.safeY; p.vx = 0; p.vy = 0; p.lock = 0.5; state.fade = 0.7; }
+      break;
+    }
   }
 }
 function attackHits() {
-  const p = state.p, cx = p.x + p.w / 2, R = tune.attack_range;
-  const hb = p.atkUp ? { x: cx - 36, y: p.y - R, w: 72, h: R + 12 } : { x: p.face > 0 ? cx : cx - R, y: p.y - 14, w: R, h: p.h + 22 };
+  const p = state.p, cx = p.x + p.w / 2, R = tune.attack_range, d = p.atkDir;
+  const hb = d === 1 ? { x: cx - 36, y: p.y - R, w: 72, h: R + 12 } : d === 2 ? { x: cx - 34, y: p.y + p.h - 8, w: 68, h: R * 0.85 } : { x: p.face > 0 ? cx : cx - R, y: p.y - 14, w: R, h: p.h + 22 };
   const dmg = state.flags.lamina ? tune.blade_damage_strong : tune.blade_damage;
-  let landed = false;
-  for (const e of state.ents) if (e.alive && !p.atkHit.includes(e.id) && overlap(hb, e)) { p.atkHit.push(e.id); if (damageEnt(e, dmg, p.face)) { landed = true; state.calor = Math.min(tune.calor_max, state.calor + 1); } }
+  let landed = false, boss = false;
+  for (const e of state.ents) if (e.alive && !p.atkHit.includes(e.id) && overlap(hb, e)) { p.atkHit.push(e.id); if (damageEnt(e, dmg, p.face)) { landed = true; boss = boss || !!SPEC[e.k].boss; state.calor = Math.min(tune.calor_max, state.calor + 1); } }
   for (const s of state.shots) if (s.k === 'wisp' && !s.gone && overlap(hb, { x: s.x - 12, y: s.y - 12, w: 24, h: 24 })) { s.gone = true; landed = true; puff(s.x, s.y, 10, PAL.violet, 200, { add: true, life: 0.5 }); sfx('hit'); }
-  if (!state.flags.quebrada && !p.atkHit.includes('wall')) { // a parede rachada
-    const a0 = Math.floor(hb.x / T), a1 = Math.floor((hb.x + hb.w) / T), b0 = Math.floor(hb.y / T), b1 = Math.floor((hb.y + hb.h) / T);
-    let found = false; for (let ty = b0; ty <= b1 && !found; ty++) for (let tx = a0; tx <= a1; tx++) if (tileCode(tx, ty) === 4) { found = true; break; }
-    if (found) { p.atkHit.push('wall'); state.wallHp--; landed = true; fx.shake = 6; puff(p.face > 0 ? hb.x + hb.w : hb.x, p.y + 10, 14, '#7f8f8c', 220, { life: 0.7 });
-      if (state.wallHp <= 0) { state.flags.quebrada = true; sfx('break'); fx.shake = 12; puff(54.5 * T + 20, 12.5 * T, 40, '#7f8f8c', 320, { life: 1, s: 5, w: 80, h: 120 }); save(); } else sfx('clank'); }
+  const a0 = Math.floor(hb.x / T), a1 = Math.floor((hb.x + hb.w) / T), b0 = Math.floor(hb.y / T), b1 = Math.floor((hb.y + hb.h) / T);
+  const hasTile = code => { for (let ty = b0; ty <= b1; ty++) for (let tx = a0; tx <= a1; tx++) if (tileCode(tx, ty) === code) return true; return false; };
+  if (!state.flags.quebrada && !p.atkHit.includes('wall') && hasTile(4)) { // a parede rachada
+    p.atkHit.push('wall'); state.wallHp--; landed = true; fx.shake = 6; puff(p.face > 0 ? hb.x + hb.w : hb.x, p.y + 10, 14, '#7f8f8c', 220, { life: 0.7 });
+    if (state.wallHp <= 0) { state.flags.quebrada = true; sfx('break'); fx.shake = 12; puff(54.5 * T + 20, 12.5 * T, 40, '#7f8f8c', 320, { life: 1, s: 5, w: 80, h: 120 }); save(); } else sfx('clank');
   }
-  if (landed) { state.hitstop = 0.05; if (!p.atkUp) p.vx = -p.face * tune.hit_recoil; fx.shake = Math.max(fx.shake, 4); }
+  let pogo = landed && d === 2;
+  if (d === 2 && !pogo && !p.atkHit.includes('thorns') && hasTile(3)) { p.atkHit.push('thorns'); pogo = true; sfx('clank'); puff(cx, hb.y + hb.h, 8, PAL.violetPale, 180, { add: true, life: 0.4, up: true }); } // quica nos espinhos
+  if (pogo) { const grav = 2 * tune.jump_height / (tune.jump_apex_time * tune.jump_apex_time); p.vy = -Math.sqrt(2 * grav * tune.pogo_height); p.jumping = false; p.dashUsed = false; p.jump2 = false; }
+  if (landed) { state.hitstop = boss ? tune.boss_hitstop : tune.hit_hitstop; if (d === 0) p.vx = -p.face * tune.hit_recoil; fx.shake = Math.max(fx.shake, boss ? 7 : 4); }
 }
 
-// ---- Os inimigos: três tipos, três jeitos de atacar ---------------------------------------
+// ---- Os inimigos: três tipos, três jeitos de atacar. Quem já te matou muito luta diferente. ----
 function updCarcaca(e, dt) { // lenta; avisa, bate forte, e fica presa no próprio golpe
   const p = state.p, ecx = e.x + e.w / 2, dx = p.x + p.w / 2 - ecx, adx = Math.abs(dx), dy = Math.abs(p.y + p.h - (e.y + e.h));
   if (e.st === 'sleep') { if (adx < 330 && dy < 130) { e.st = 'rise'; e.t = 0; e.face = dx >= 0 ? 1 : -1; sfx('tele'); } }
@@ -406,41 +454,49 @@ function updCarcaca(e, dt) { // lenta; avisa, bate forte, e fica presa no própr
   else if (e.st === 'idle') { if (adx < 440 && dy < 160) { e.st = 'walk'; e.t = 0; greet(e); } }
   else if (e.st === 'walk') {
     e.face = dx >= 0 ? 1 : -1; e.vx = groundAhead(e) ? e.face * tune.carcaca_speed : 0;
-    if (adx < 94 && dy < 84) { e.st = 'windup'; e.t = 0; e.vx = 0; sfx('tele'); }
+    if (adx < 94 && dy < 84) { e.st = 'windup'; e.t = 0; e.n = 0; e.vx = 0; sfx('tele'); }
   } else if (e.st === 'windup') {
     e.vx = 0;
     if (e.t >= tune.carcaca_windup) {
       e.st = 'slam'; e.t = 0; sfx('slam'); fx.shake = 10;
       const hb = { x: e.face > 0 ? ecx : ecx - 108, y: e.y + 4, w: 108, h: e.h + 2 };
       puff(ecx + e.face * 70, e.y + e.h, 18, '#9fb0ad', 220, { up: true, life: 0.7, s: 4 });
-      if (overlap(hb, p)) hurt(tune.carcaca_damage, 'carcaca', ecx);
+      if (overlap(hb, p)) hurt(tune.carcaca_damage, 'carcaca', ecx, 'golpe');
     }
-  } else if (e.st === 'slam') { if (e.t >= 0.3) { e.st = 'recover'; e.t = 0; } }
-  else if (e.st === 'recover') { if (e.t >= tune.carcaca_recover) { e.st = 'walk'; e.t = 0; } }
+  } else if (e.st === 'slam') {
+    if (e.t >= 0.3) {
+      if (mem('carcaca') && e.n === 0 && adx < 190) { e.st = 'windup'; e.t = tune.carcaca_windup * 0.5; e.n = 1; e.face = dx >= 0 ? 1 : -1; sfx('tele'); } // lembra de você: emenda um segundo golpe
+      else { e.st = 'recover'; e.t = 0; }
+    }
+  } else if (e.st === 'recover') { if (e.t >= tune.carcaca_recover) { e.st = 'walk'; e.t = 0; } }
   if (e.st !== 'walk') e.vx *= 0.8;
   e.vy += 1800 * dt; moveBody(e, dt, true);
-  if (e.st !== 'sleep' && !(e.st === 'rise' && e.rise < 0.6) && overlap(e, p)) hurt(1, 'carcaca', ecx);
+  if (e.st !== 'sleep' && !(e.st === 'rise' && e.rise < 0.6) && overlap(e, p)) hurt(1, 'carcaca', ecx, 'corpo');
 }
 function updMariposa(e, dt) { // paira, treme, mergulha
   const p = state.p, ecx = e.x + e.w / 2, ecy = e.y + e.h / 2, dx = p.x + p.w / 2 - ecx, dy = p.y + p.h / 2 - ecy, d = Math.hypot(dx, dy) || 1;
   e.cd -= dt;
   if (e.st === 'hover') {
-    const tx = e.hx + Math.sin(e.at * 0.9 + e.hx) * 54, ty = e.hy + Math.sin(e.at * 1.7) * 16;
+    if (e.tmp) e.hx = lerp(e.hx, p.x + p.w / 2, Math.min(1, dt * 0.7)); // filha da Rainha: vem atrás de você, não fica no ninho
+    const tx = e.hx + Math.sin(e.at * 0.9 + (e.tmp ? e.hy : e.hx)) * 54, ty = e.hy + Math.sin(e.at * 1.7) * 16;
     e.vx = lerp(e.vx, (tx - ecx) * 1.6, Math.min(1, dt * 4)); e.vy = lerp(e.vy, (ty - ecy) * 1.6, Math.min(1, dt * 4)); e.face = dx >= 0 ? 1 : -1; e.tilt = 0;
-    if (d < 350 && e.cd <= 0) { e.st = 'tele'; e.t = 0; greet(e); }
+    if (d < 350 && e.cd <= 0) { e.st = 'tele'; e.t = 0; e.n = 0; greet(e); }
   } else if (e.st === 'tele') {
     e.vx *= 0.85; e.vy *= 0.85;
-    if (e.t >= tune.mariposa_telegraph) { e.st = 'dive'; e.t = 0; e.vx = dx / d * tune.mariposa_dive; e.vy = dy / d * tune.mariposa_dive; e.tilt = Math.atan2(dy, dx) - Math.PI / 2; sfx('thorn'); }
+    if (e.t >= tune.mariposa_telegraph * (e.n ? 0.6 : 1)) { e.st = 'dive'; e.t = 0; e.vx = dx / d * tune.mariposa_dive; e.vy = dy / d * tune.mariposa_dive; e.tilt = Math.atan2(dy, dx) - Math.PI / 2; sfx('thorn'); }
   } else if (e.st === 'dive') {
-    if (e.t > 0.75 || tileSolid(Math.floor(ecx / T), Math.floor((ecy + 12) / T), true)) { e.st = 'recover'; e.t = 0; e.vx *= 0.3; e.vy = -80; }
+    if (e.t > 0.75 || tileSolid(Math.floor(ecx / T), Math.floor((ecy + 12) / T), true)) {
+      if (mem('mariposa') && e.n === 0 && !e.tmp) { e.st = 'tele'; e.t = 0; e.n = 1; e.vx *= 0.2; e.vy = -140; } // lembra de você: mergulha duas vezes
+      else { e.st = 'recover'; e.t = 0; e.vx *= 0.3; e.vy = -80; }
+    }
   } else if (e.st === 'recover') {
     e.vx *= 0.92; e.vy = lerp(e.vy, -50, Math.min(1, dt * 3)); e.tilt = 0;
     if (e.t >= tune.mariposa_recover) { e.st = 'hover'; e.t = 0; e.cd = 0.7; }
   }
   e.x += e.vx * dt; e.y += e.vy * dt;
-  if (overlap(e, p)) hurt(1, 'mariposa', ecx);
+  if (overlap(e, p)) hurt(1, 'mariposa', ecx, 'mergulho');
 }
-function updEspinheiro(e, dt) { // patrulha, eriça, atira dois espinhos em arco
+function updEspinheiro(e, dt) { // patrulha, eriça, atira espinhos em arco
   const p = state.p, ecx = e.x + e.w / 2, dx = p.x + p.w / 2 - ecx, adx = Math.abs(dx), ady = Math.abs(p.y + p.h - (e.y + e.h));
   e.cd -= dt;
   if (e.st === 'walk') {
@@ -450,78 +506,157 @@ function updEspinheiro(e, dt) { // patrulha, eriça, atira dois espinhos em arco
   } else if (e.st === 'bristle') {
     e.vx = 0;
     if (e.t >= tune.espinheiro_bristle) {
-      e.st = 'fire'; e.t = 0; const dir = dx >= 0 ? 1 : -1; sfx('thorn');
-      state.shots.push({ k: 'thorn', x: ecx, y: e.y + 2, vx: dir * tune.thorn_speed, vy: -110, g: 620, t: 0, life: 2.4, dmg: 1, key: 'espinheiro' });
-      state.shots.push({ k: 'thorn', x: ecx, y: e.y + 2, vx: dir * tune.thorn_speed * 0.7, vy: -340, g: 620, t: 0, life: 2.4, dmg: 1, key: 'espinheiro' });
+      e.st = 'fire'; e.t = 0; const dir = dx >= 0 ? 1 : -1, shot = (k, vy) => state.shots.push({ k: 'thorn', x: ecx, y: e.y + 2, vx: dir * tune.thorn_speed * k, vy, g: 620, t: 0, life: 2.4, dmg: 1, key: 'espinheiro', how: 'espinho' }); sfx('thorn');
+      shot(1, -110); shot(0.7, -340);
+      if (mem('espinheiro')) shot(0.45, -540); // lembra de você: um terceiro espinho, alto
     }
   } else if (e.st === 'fire') { e.vx = 0; if (e.t >= 0.45) { e.st = 'walk'; e.t = 0; e.cd = tune.espinheiro_interval; } }
   e.vy += 1800 * dt; moveBody(e, dt, true);
-  if (overlap(e, p)) hurt(1, 'espinheiro', ecx);
+  if (overlap(e, p)) hurt(1, 'espinheiro', ecx, 'corpo');
 }
+// ---- Os guardiões -----------------------------------------------------------------------
+function startFight(e, snd) { state.fight = true; sfx('gate'); sfx(snd); fx.shake = 10; banner(LINES[e.k].name, '', 3); greet(e); events.push({ type: 'guardiao', k: e.k }); }
+function rageCheck(e) { // segunda fase: com metade da vida, o guardião enfurece
+  if (e.rage || e.st === 'dying' || e.hp > tune[SPEC[e.k].hp] * tune.phase2_at) return false;
+  e.rage = 1; e.st = 'rage'; e.t = 0; e.n = 0; e.vx = 0; e.tilt = 0; e.alpha = 1; state.shots = []; sfx('rage'); fx.shake = 16; buzz(90); say(e, LINES[e.k].rage, 3.4);
+  puff(e.x + e.w / 2, e.y + e.h / 2, 30, PAL.violet, 300, { add: true, life: 0.9, g: -40 }); events.push({ type: 'furia', k: e.k });
+  return true;
+}
+function rageSmoke(e, dt) { if (e.rage && Math.floor(e.at * 9) !== Math.floor((e.at - dt) * 9)) puff(e.x + e.w / 2 + (vr() - 0.5) * e.w, e.y + vr() * e.h * 0.5, 2, PAL.violet, 60, { add: true, life: 0.7, g: -120 }); }
 // O Vigia Oco: investe até a parede e fica atordoado; salta e levanta ondas no chão; varre com a garra de perto.
 function updVigia(e, dt) {
   const p = state.p, r = ROOMS[state.room], ecx = e.x + e.w / 2, pcx = p.x + p.w / 2, dx = pcx - ecx, adx = Math.abs(dx), next = (st) => { e.st = st; e.t = 0; };
-  if (e.st === 'wait') { if (pcx < r.boss.trigger * T) { next('roar'); state.fight = true; sfx('gate'); sfx('roar'); fx.shake = 10; banner(LINES.vigia.name, '', 3); greet(e); events.push({ type: 'guardiao', k: 'vigia' }); } return; }
+  const sp = e.rage ? tune.phase2_speed : 1;
+  if (e.st === 'wait') { if (pcx < r.boss.trigger * T) { next('roar'); startFight(e, 'roar'); } return; }
   if (e.st === 'dying') { if (e.t > 0.2 && Math.floor(e.t * 12) !== Math.floor((e.t - dt) * 12)) puff(ecx + (vr() - 0.5) * 60, e.y + vr() * e.h, 8, '#8a9a98', 180, { life: 1, s: 4, g: -40 }); if (e.t >= 2.6) bossFallen(e); return; }
+  rageCheck(e); rageSmoke(e, dt);
   if (e.st === 'roar') { if (e.t >= 1.5) next('idle'); }
+  else if (e.st === 'rage') { if (e.t >= 1.4) next('idle'); }
   else if (e.st === 'idle') {
-    e.face = dx >= 0 ? 1 : -1;
-    if (e.t >= 0.4) { if (adx < 150) next('swipeup'); else { const c = rng() < 0.55 ? 'tele' : 'crouch'; if (c === e.last && rng() < 0.6) next(c === 'tele' ? 'crouch' : 'tele'); else next(c); e.last = e.st; if (e.st === 'tele') sfx('tele'); } }
-  } else if (e.st === 'tele') { e.face = dx >= 0 ? 1 : -1; if (e.t >= tune.vigia_telegraph) { next('charge'); e.vx = e.face * tune.vigia_charge; sfx('roar'); } }
+    e.face = dx >= 0 ? 1 : -1; e.n = 0;
+    if (e.t >= 0.4 * sp) {
+      if (adx < 150) next('swipeup');
+      else {
+        let pc = 0.55; const top = topHow('vigia'); // lembra de você: insiste no que mais te matou
+        if (mem('vigia')) pc = top === 'investida' ? 0.78 : top === 'onda' ? 0.3 : 0.55;
+        const c = rng() < pc ? 'tele' : 'crouch';
+        if (c === e.last && rng() < 0.5 && !mem('vigia')) next(c === 'tele' ? 'crouch' : 'tele'); else next(c);
+        e.last = e.st; if (e.st === 'tele') sfx('tele');
+      }
+    }
+  } else if (e.st === 'tele') { e.face = dx >= 0 ? 1 : -1; if (e.t >= tune.vigia_telegraph * sp) { next('charge'); e.vx = e.face * tune.vigia_charge; sfx('roar'); } }
   else if (e.st === 'charge') {
     e.vx = e.face * tune.vigia_charge;
     if (Math.floor(e.t * 20) !== Math.floor((e.t - dt) * 20)) puff(ecx - e.face * 30, e.y + e.h, 4, '#9fb0ad', 120, { up: true, life: 0.5, s: 4 });
   } else if (e.st === 'stun') { if (e.t >= tune.vigia_stun) next('idle'); }
-  else if (e.st === 'crouch') { e.face = dx >= 0 ? 1 : -1; if (e.t >= 0.5) { next('leap'); e.vy = -780; e.vx = clamp(dx / 0.82, -560, 560); sfx('jump'); } }
+  else if (e.st === 'crouch') { e.face = dx >= 0 ? 1 : -1; if (e.t >= 0.5 * sp) { next('leap'); e.vy = -780; e.vx = clamp(dx / 0.82, -560, 560); e.ty = 0; sfx('jump'); } }
   else if (e.st === 'leap') {
     if (e.ground && e.t > 0.2) {
-      next('rest'); e.vx = 0; sfx('slam'); fx.shake = 14; puff(ecx, e.y + e.h, 26, '#9fb0ad', 260, { up: true, life: 0.8, s: 5 });
-      for (const d of [-1, 1]) state.shots.push({ k: 'shock', x: ecx + d * 40, y: e.y + e.h, vx: d * tune.vigia_shock, vy: 0, g: 0, t: 0, life: 3, dmg: 1, key: 'vigia' });
+      next('rest'); e.vx = 0; sfx('slam'); fx.shake = 14; buzz(25); puff(ecx, e.y + e.h, 26, '#9fb0ad', 260, { up: true, life: 0.8, s: 5 });
+      for (const d of [-1, 1]) state.shots.push({ k: 'shock', x: ecx + d * 40, y: e.y + e.h, vx: d * tune.vigia_shock, vy: 0, g: 0, t: 0, life: 3, dmg: 1, key: 'vigia', how: 'onda' });
+      e.ty = e.rage ? 1 : 0;
     }
-  } else if (e.st === 'swipeup') { if (e.t >= 0.45) { next('swipe'); sfx('slash'); const hb = { x: e.face > 0 ? ecx : ecx - 150, y: e.y + 10, w: 150, h: e.h }; if (overlap(hb, p)) hurt(2, 'vigia', ecx); } }
+  } else if (e.st === 'swipeup') { if (e.t >= 0.45 * sp) { next('swipe'); sfx('slash'); const hb = { x: e.face > 0 ? ecx : ecx - 150, y: e.y + 10, w: 150, h: e.h }; if (overlap(hb, p)) hurt(2, 'vigia', ecx, 'garra'); } }
   else if (e.st === 'swipe') { if (e.t >= 0.3) next('rest'); }
-  else if (e.st === 'rest') { if (e.t >= 1.0) next('idle'); }
+  else if (e.st === 'rest') {
+    if (e.ty && e.t >= 0.42) { e.ty = 0; sfx('slam'); fx.shake = 8; for (const d of [-1, 1]) state.shots.push({ k: 'shock', x: ecx + d * 40, y: e.y + e.h, vx: d * tune.vigia_shock * 1.25, vy: 0, g: 0, t: 0, life: 3, dmg: 1, key: 'vigia', how: 'onda' }); } // em fúria: uma segunda onda
+    if (e.t >= 1.0) next('idle');
+  }
   if (e.st !== 'charge' && e.st !== 'leap') e.vx *= 0.8;
   e.vy += 1900 * dt; moveBody(e, dt, true);
-  if (e.st === 'charge' && (e.hitWall || e.t > 2)) { next('stun'); sfx('slam'); fx.shake = 16; puff(e.face > 0 ? e.x + e.w : e.x, e.y + e.h * 0.5, 24, '#9fb0ad', 300, { life: 0.9, s: 5 }); }
-  if (overlap(e, p)) hurt(e.st === 'charge' ? 2 : 1, 'vigia', ecx);
+  if (e.st === 'charge' && (e.hitWall || e.t > 2)) {
+    sfx('slam'); fx.shake = 16; buzz(25); puff(e.face > 0 ? e.x + e.w : e.x, e.y + e.h * 0.5, 24, '#9fb0ad', 300, { life: 0.9, s: 5 });
+    if (e.rage && e.n === 0) { e.n = 1; e.face = -e.face; e.st = 'tele'; e.t = tune.vigia_telegraph * sp * 0.45; } // em fúria: bate na parede e volta
+    else next('stun');
+  }
+  if (overlap(e, p)) hurt(e.st === 'charge' ? 2 : 1, 'vigia', ecx, e.st === 'charge' ? 'investida' : 'corpo');
 }
 // A Enlutada: chuva de fogo violeta com um vão seguro longe de você; rasantes sobre onde você está; chamas que te seguem.
 const ENL_CYCLE = ['rain', 'swoop', 'swoop', 'tired', 'wisps', 'swoop', 'tired'];
 function updEnlutada(e, dt) {
   const p = state.p, r = ROOMS[state.room], ecx = e.x + e.w / 2, pcx = p.x + p.w / 2, gy = r.boss.y * T, A0 = 3 * T + 20, A1 = 42 * T - 20, mid = (A0 + A1) / 2;
+  const sp = e.rage ? tune.phase2_speed : 1, top = mem('enlutada') ? topHow('enlutada') : '';
   const next = (st) => { e.st = st; e.t = 0; e.n = 0; }, go = (x, y, k) => { e.x = lerp(e.x, x - e.w / 2, Math.min(1, dt * k)); e.y = lerp(e.y, y - e.h, Math.min(1, dt * k)); };
   const advance = () => { e.cd = (e.cd + 1) % ENL_CYCLE.length; next(ENL_CYCLE[e.cd]); if (e.st === 'swoop') e.n = -1; };
-  if (e.st === 'wait') { e.y = e.hy + Math.sin(e.at * 1.3) * 6; if (pcx > r.boss.trigger * T) { next('roar'); state.fight = true; sfx('gate'); sfx('wail'); banner(LINES.enlutada.name, '', 3); greet(e); e.cd = -1; events.push({ type: 'guardiao', k: 'enlutada' }); } return; }
+  if (e.st === 'wait') { e.y = e.hy + Math.sin(e.at * 1.3) * 6; if (pcx > r.boss.trigger * T) { next('roar'); startFight(e, 'wail'); e.cd = -1; } return; }
   if (e.st === 'dying') { e.alpha = clamp(1 - (e.t - 1.2) / 1.6, 0, 1); go(ecx, e.y + e.h - dt * 10, 1); if (Math.floor(e.t * 14) !== Math.floor((e.t - dt) * 14)) puff(ecx + (vr() - 0.5) * 50, e.y + vr() * e.h, 6, PAL.violet, 160, { add: true, life: 1, g: -90 }); if (e.t >= 3) bossFallen(e); return; }
+  rageCheck(e); rageSmoke(e, dt);
   e.face = pcx >= ecx ? 1 : -1; e.alpha = 1;
-  if (e.st === 'roar') { go(ecx, gy - 60 + Math.sin(e.at * 2) * 5, 2); if (e.t >= 1.7) advance(); }
-  else if (e.st === 'rain') { // três ondas; o vão seguro fica a um ímpeto de distância
+  if (e.st === 'roar' || e.st === 'rage') { go(ecx, gy - 60 + Math.sin(e.at * 2) * 5, 2); if (e.t >= 1.6) { if (e.st === 'rage') e.cd = -1; advance(); } }
+  else if (e.st === 'rain') { // ondas de chuva; o vão seguro fica a um ímpeto de distância
     go(mid, 250, 2.2);
-    const times = [0.5, 1.9, 3.3];
-    if (e.n < 3 && e.t >= times[e.n]) {
-      e.n++; const dist = lerp(300, 430, rng()), side = (pcx - dist > A0 + 90 && (pcx + dist > A1 - 90 || rng() < 0.5)) ? -1 : 1, gx = clamp(pcx + side * dist, A0 + 90, A1 - 90), half = tune.enlutada_rain_gap / 2;
-      for (let x = A0 + 30; x <= A1 - 30; x += 78) if (Math.abs(x - gx) > half + 30) state.shots.push({ k: 'pillar', x, y: gy, w: 72, t: 0, warn: tune.enlutada_rain_warn, live: 0.45, dmg: 2, key: 'enlutada', vx: 0, vy: 0 });
+    const waves = 3 + (e.rage ? 1 : 0) + (top === 'chuva' ? 1 : 0), gapT = 1.4 * sp, warn = tune.enlutada_rain_warn * sp;
+    if (e.n < waves && e.t >= 0.5 + e.n * gapT) {
+      e.n++; const dist = lerp(300, 430, rng()), side = (pcx - dist > A0 + 90 && (pcx + dist > A1 - 90 || rng() < 0.5)) ? -1 : 1, gx = clamp(pcx + side * dist, A0 + 90, A1 - 90), half = tune.enlutada_rain_gap * (e.rage ? 0.88 : 1) / 2;
+      for (let x = A0 + 30; x <= A1 - 30; x += 78) if (Math.abs(x - gx) > half + 30) state.shots.push({ k: 'pillar', x, y: gy, w: 72, t: 0, warn, live: 0.45, dmg: 2, key: 'enlutada', how: 'chuva', vx: 0, vy: 0 });
       sfx('tele');
     }
-    if (e.t >= times[2] + tune.enlutada_rain_warn + 0.7) advance();
+    if (e.t >= 0.5 + (waves - 1) * gapT + warn + 0.7) advance();
   } else if (e.st === 'swoop') { // some, reaparece de um lado, marca o chão e passa rasante
-    const warn = tune.enlutada_swoop_warn;
+    const warn = tune.enlutada_swoop_warn * sp;
     if (e.n === -1) { e.n = 0; e.tx = clamp(pcx, A0 + 60, A1 - 60); e.ty = pcx > mid ? -1 : 1; e.hx = clamp(e.tx - e.ty * 430, A0 + 30, A1 - 30); sfx('tele'); }
     if (e.t < 0.3) e.alpha = 1 - e.t / 0.3;
     else if (e.t < 0.3 + warn) { e.x = e.hx - e.w / 2; e.y = 150 - e.h + 110; e.alpha = clamp((e.t - 0.3) / 0.25, 0, 1); e.face = e.ty; }
-    else { const k = (e.t - 0.3 - warn) / 0.85; if (e.n === 0) { e.n = 1; sfx('dash'); }
+    else {
+      const k = (e.t - 0.3 - warn) / 0.85; if (e.n === 0) { e.n = 1; sfx('dash'); }
       const x0 = e.hx, x2 = clamp(e.tx + e.ty * 430, A0 + 30, A1 - 30), x = lerp(x0, x2, k), y = 260 + (gy - 8 - 260) * (1 - Math.pow(2 * k - 1, 2));
       e.x = x - e.w / 2; e.y = y - e.h; e.face = e.ty; e.tilt = e.ty * 0.5 * (1 - Math.abs(2 * k - 1) * 0.5);
       if (Math.floor(e.t * 30) !== Math.floor((e.t - dt) * 30)) puff(x, y - 40, 3, PAL.violet, 60, { add: true, life: 0.5, g: 0 });
-      if (k >= 1) { e.tilt = 0; advance(); } }
-  } else if (e.st === 'tired') { e.tilt = 0; go(clamp(ecx, A0 + 80, A1 - 80), gy - 6, 3); if (e.t >= tune.enlutada_tired) advance(); }
+      if (k >= 1) { e.tilt = 0; if (top === 'rasante' && !e.hy2) { e.hy2 = 1; next('swoop'); e.n = -1; } else { e.hy2 = 0; advance(); } } // lembra de você: um rasante a mais
+    }
+  } else if (e.st === 'tired') { e.tilt = 0; go(clamp(ecx, A0 + 80, A1 - 80), gy - 6, 3); if (e.t >= tune.enlutada_tired * (e.rage ? 0.8 : 1)) advance(); }
   else if (e.st === 'wisps') {
+    const count = 3 + (e.rage ? 1 : 0) + (top === 'chama' ? 1 : 0);
     go(mid + Math.sin(e.at) * 120, 330, 1.8);
-    if (e.n < 3 && e.t >= 0.5 + e.n * 0.45) { e.n++; sfx('wail'); state.shots.push({ k: 'wisp', x: ecx + (e.n - 2) * 60, y: e.y + 10, vx: (e.n - 2) * 120, vy: -160, g: 0, t: 0, life: 6.5, dmg: 1, key: 'enlutada' }); }
-    if (e.t >= 2.6) advance();
+    if (e.n < count && e.t >= 0.5 + e.n * 0.45) { e.n++; sfx('wail'); state.shots.push({ k: 'wisp', x: ecx + (e.n - 2) * 60, y: e.y + 10, vx: (e.n - 2) * 120, vy: -160, g: 0, t: 0, life: 6.5, dmg: 1, key: 'enlutada', how: 'chama' }); }
+    if (e.t >= 1.3 + count * 0.45) advance();
   }
-  if (e.alpha > 0.6 && overlap({ x: e.x + 8, y: e.y + 10, w: e.w - 16, h: e.h - 14 }, p)) hurt(e.st === 'swoop' ? 2 : 1, 'enlutada', ecx);
+  if (e.alpha > 0.6 && overlap({ x: e.x + 8, y: e.y + 10, w: e.w - 16, h: e.h - 14 }, p)) hurt(e.st === 'swoop' ? 2 : 1, 'enlutada', ecx, e.st === 'swoop' ? 'rasante' : 'corpo');
+}
+// A Rainha de Fuligem: vento e dardos de um lado da sala; um mergulho que a deixa presa no chão; filhas que ela chama.
+const RAI_CYCLE = ['gust', 'dive', 'brood', 'dive', 'gust', 'dive'];
+function updRainha(e, dt) {
+  const p = state.p, r = ROOMS[state.room], ecx = e.x + e.w / 2, ecy = e.y + e.h / 2, pcx = p.x + p.w / 2, gy = r.boss.y * T, A0 = 3 * T + 30, A1 = 42 * T - 30, mid = (A0 + A1) / 2;
+  const sp = e.rage ? tune.phase2_speed : 1, top = mem('rainha') ? topHow('rainha') : '';
+  const next = (st) => { e.st = st; e.t = 0; e.n = 0; e.ty = 0; }, go = (x, y, k) => { e.x = lerp(e.x, x - e.w / 2, Math.min(1, dt * k)); e.y = lerp(e.y, y - e.h / 2, Math.min(1, dt * k)); };
+  const advance = () => { e.cd = (e.cd + 1) % RAI_CYCLE.length; next(RAI_CYCLE[e.cd]); e.hy2 = 0; };
+  if (e.st === 'wait') { e.y = e.hy + Math.sin(e.at * 1.2) * 6; if (pcx > r.boss.trigger * T) { next('roar'); startFight(e, 'wail'); e.cd = -1; } return; }
+  if (e.st === 'dying') { e.alpha = clamp(1 - (e.t - 1.2) / 1.4, 0, 1); e.y += 30 * dt; if (Math.floor(e.t * 14) !== Math.floor((e.t - dt) * 14)) puff(ecx + (vr() - 0.5) * 120, ecy + (vr() - 0.5) * 60, 6, '#8a9a98', 160, { life: 1, g: 40 }); if (e.t >= 2.8) bossFallen(e); return; }
+  rageCheck(e); rageSmoke(e, dt);
+  e.face = pcx >= ecx ? 1 : -1; e.tilt = 0;
+  if (e.st === 'roar' || e.st === 'rage') { go(mid, gy - 250 + Math.sin(e.at * 2) * 6, 2); if (e.t >= 1.5) { if (e.st === 'rage') e.cd = -1; advance(); } }
+  else if (e.st === 'gust') { // vai para o lado mais longe de você, sopra e solta dardos em duas alturas
+    if (!e.ty) { e.ty = 1; e.hx = pcx > mid ? A0 + 110 : A1 - 110; sfx('tele'); }
+    go(e.hx, gy - 180 + Math.sin(e.at * 3) * 8, 3);
+    const dir = e.hx < mid ? 1 : -1, shots = 3 + (e.rage ? 1 : 0) + (top === 'dardo' ? 1 : 0);
+    if (e.t > 0.55 * sp) { state.wind = dir * tune.rainha_wind; if (Math.floor(e.t * 16) !== Math.floor((e.t - dt) * 16)) fx.parts.push({ x: ecx + dir * 60, y: ecy + (vr() - 0.5) * 160, vx: dir * (500 + vr() * 300), vy: (vr() - 0.5) * 40, life: 0, max: 0.5, s: 2, col: '#cfd8d5', g: 0, add: false, ln: true }); }
+    if (e.n < shots && e.t >= (0.75 + e.n * 0.55) * sp) { const low = (e.n + (e.cd > 2 ? 1 : 0)) % 2 === 0; e.n++; sfx('thorn'); state.shots.push({ k: 'dart', x: ecx + dir * 50, y: low ? gy - 20 : gy - 112, vx: dir * tune.rainha_dart, vy: 0, g: 0, t: 0, life: 4, dmg: 1, key: 'rainha', how: 'dardo' }); }
+    if (e.t >= (0.75 + shots * 0.55) * sp + 0.5) advance();
+  } else if (e.st === 'dive') { // sobe, treme, e mergulha onde você estava
+    const warn = tune.rainha_warn * sp;
+    if (!e.ty) { e.ty = 1; e.tx = clamp(pcx, A0 + 32, A1 - 32); e.hx = clamp(e.tx + (ecx < e.tx ? -1 : 1) * 250, A0 + 70, A1 - 70); sfx('tele'); }
+    if (e.t < warn * 0.55) e.tx = clamp(pcx, A0 + 32, A1 - 32); // mira até a metade do aviso; depois trava
+    go(e.hx, gy - 300, 4);
+    if (e.t >= warn) { e.st = 'dive2'; e.t = 0; sfx('dash'); }
+  } else if (e.st === 'dive2') {
+    const tx = e.tx, tyy = gy - e.h / 2 + 6, ddx = tx - ecx, ddy = tyy - ecy, d = Math.hypot(ddx, ddy) || 1, stepLen = tune.rainha_dive * dt;
+    e.tilt = Math.atan2(ddy, ddx) - Math.PI / 2;
+    if (d <= stepLen || e.t > 1.4) {
+      e.x = tx - e.w / 2; e.y = tyy - e.h / 2; e.st = 'stuck'; e.t = 0; e.tilt = 0; sfx('slam'); fx.shake = 14; buzz(25); puff(tx, gy, 26, '#9fb0ad', 280, { up: true, life: 0.8, s: 5 });
+    } else { e.x += ddx / d * stepLen; e.y += ddy / d * stepLen; if (Math.floor(e.t * 30) !== Math.floor((e.t - dt) * 30)) puff(ecx, ecy, 3, PAL.violet, 60, { add: true, life: 0.5, g: 0 }); }
+  } else if (e.st === 'stuck') { // presa no chão: a sua vez
+    const again = (e.rage || top === 'mergulho') && !e.hy2;
+    if (e.t >= (again ? 0.55 : tune.rainha_stuck)) { if (again) { e.hy2 = 1; e.st = 'dive'; e.t = 0; e.ty = 0; } else advance(); } // em fúria, ou lembrando de você: mergulha de novo
+  } else if (e.st === 'brood') { // chama até duas filhas
+    go(mid + Math.sin(e.at * 0.8) * 160, gy - 280, 2);
+    if (e.n < 2 && e.t >= 0.5 + e.n * 0.5) {
+      e.n++;
+      if (state.ents.filter(q => q.tmp && q.alive).length < 2) { const m = makeEnt({ k: 'mariposa', x: (ecx + (e.n === 1 ? -70 : 70)) / T - 0.5, y: (ecy + 40) / T }, 'R11:f' + Math.round(state.t * 60)); m.tmp = 1; m.cd = 1.2; state.ents.push(m); sfx('wail'); puff(m.x + 15, m.y + 12, 10, PAL.violet, 140, { add: true, life: 0.6 }); }
+    }
+    if (e.t >= 1.9) advance();
+  }
+  if (e.st !== 'stuck') { const hi = e.st === 'dive2' ? 6 : 18; // no mergulho o corpo inteiro acerta: encostar na parede não salva
+    if (overlap({ x: e.x + hi, y: e.y + 14, w: e.w - hi * 2, h: e.h - 22 }, p)) hurt(e.st === 'dive2' ? 2 : 1, 'rainha', ecx, e.st === 'dive2' ? 'mergulho' : 'corpo'); }
 }
 function bossFallen(e) {
   e.alive = false; state.flags[e.k] = true; state.fight = false; state.shots = []; addBrasas(SPEC[e.k].brasas); sfx('gate');
@@ -532,22 +667,23 @@ function updateShots(dt) {
   const p = state.p;
   for (const s of state.shots) {
     s.t += dt;
-    if (s.k === 'pillar') { if (s.t >= s.warn && s.t - dt < s.warn) { sfx('pillar'); fx.shake = Math.max(fx.shake, 5); } if (s.t >= s.warn && s.t < s.warn + s.live * 0.75 && Math.abs(p.x + p.w / 2 - s.x) < s.w / 2 + 4) hurt(s.dmg, s.key, s.x); if (s.t > s.warn + s.live) s.gone = true; continue; }
+    if (s.k === 'pillar') { if (s.t >= s.warn && s.t - dt < s.warn) { sfx('pillar'); fx.shake = Math.max(fx.shake, 5); } if (s.t >= s.warn && s.t < s.warn + s.live * 0.75 && Math.abs(p.x + p.w / 2 - s.x) < s.w / 2 + 4) hurt(s.dmg, s.key, s.x, s.how); if (s.t > s.warn + s.live) s.gone = true; continue; }
     if (s.k === 'wisp') { const dx = p.x + p.w / 2 - s.x, dy = p.y + p.h / 2 - s.y, d = Math.hypot(dx, dy) || 1; s.vx = lerp(s.vx, dx / d * 175, Math.min(1, dt * 1.6)); s.vy = lerp(s.vy, dy / d * 175, Math.min(1, dt * 1.6)); }
     s.vy += s.g * dt; s.x += s.vx * dt; s.y += s.vy * dt;
-    const hb = s.k === 'shock' ? { x: s.x - 20, y: s.y - 44, w: 40, h: 44 } : { x: s.x - 8, y: s.y - 8, w: 16, h: 16 };
-    if (overlap(hb, p)) { hurt(s.dmg, s.key, s.x); if (s.k !== 'shock') s.gone = true; }
+    const hb = s.k === 'shock' ? { x: s.x - 20, y: s.y - 44, w: 40, h: 44 } : s.k === 'dart' ? { x: s.x - 16, y: s.y - 6, w: 32, h: 12 } : { x: s.x - 8, y: s.y - 8, w: 16, h: 16 };
+    if (overlap(hb, p)) { hurt(s.dmg, s.key, s.x, s.how); if (s.k !== 'shock') s.gone = true; }
     if (s.t > s.life) s.gone = true;
     if (s.k !== 'wisp' && tileSolid(Math.floor((s.x + Math.sign(s.vx) * 12) / T), Math.floor((s.y - (s.k === 'shock' ? 10 : 0)) / T), true)) { s.gone = true; puff(s.x, s.y - (s.k === 'shock' ? 20 : 0), 6, '#9fb0ad', 120, { life: 0.4 }); }
   }
   state.shots = state.shots.filter(s => !s.gone);
 }
-const UPD = { carcaca: updCarcaca, mariposa: updMariposa, espinheiro: updEspinheiro, vigia: updVigia, enlutada: updEnlutada };
+const UPD = { carcaca: updCarcaca, mariposa: updMariposa, espinheiro: updEspinheiro, vigia: updVigia, enlutada: updEnlutada, rainha: updRainha };
 
-// ---- Coisas do mundo: brotos, itens, saídas -------------------------------------------
+// ---- Coisas do mundo: brotos, itens, ecos, saídas ---------------------------------------
 function roomItems() {
   const r = ROOMS[state.room], out = r.items.filter(i => !state.flags[i.id]);
   if (state.room === 'R5' && state.flags.vigia && !state.flags.impeto) out.push({ id: 'impeto', x: 20, y: 14 });
+  if (state.room === 'R11' && state.flags.rainha && !state.flags.asas) out.push({ id: 'asas', x: 22, y: 17 });
   return out;
 }
 function worldThings() {
@@ -560,10 +696,15 @@ function worldThings() {
     state.flags[it.id] = true;
     if (it.id === 'lamina') { banner('Lâmina reforçada', 'seus golpes ferem mais'); sfx('pickup'); }
     if (it.id === 'fragmento') { p.maxLife++; p.life = p.maxLife; banner('Fragmento de brasa', 'mais uma vida'); sfx('pickup'); }
-    if (it.id === 'impeto') { state.mode = 'pose'; state.modeT = 0; p.vx = 0; sfx('power'); }
-    puff(it.x * T + 20, it.y * T - 30, 26, it.id === 'impeto' ? PAL.violetPale : PAL.ember, 200, { add: true, g: -60, life: 1.1 }); save();
+    if (it.id === 'impeto' || it.id === 'asas') { state.mode = 'pose'; state.modeT = 0; state.poseItem = it.id; p.vx = 0; sfx('power'); }
+    puff(it.x * T + 20, it.y * T - 30, 26, it.id === 'impeto' || it.id === 'asas' ? PAL.violetPale : PAL.ember, 200, { add: true, g: -60, life: 1.1 }); save();
+  }
+  for (const ec of r.ecos) if (Math.abs(pcx - (ec.x * T + 20)) < 90 && Math.abs(pfy - ec.y * T) < 110) { // ecos: restos de voz que contam o que houve
+    if (!fx.eco || fx.eco.id !== ec.id) { fx.eco = { id: ec.id, text: ec.text, t: 0 }; sfx('eco'); }
+    if (!state.ecos[ec.id]) { state.ecos[ec.id] = true; events.push({ type: 'eco', id: ec.id }); save(); }
   }
   if (state.room === 'R2' && pcx > 24 * T) state.flags.ravina = true;
+  if (state.room === 'R7' && pcx > 19 * T) state.flags.muro = true;
   if (state.room === 'R8' && state.flags.enlutada) { // o fim: um grande broto nasce no coração queimado
     state.endGrow = Math.min(1, state.endGrow + STEP / 3);
     if (state.endGrow >= 1 && Math.abs(pcx - 22 * T) < 40 && state.mode === 'play') { state.mode = 'ending'; state.modeT = 0; p.vx = 0; sfx('end'); }
@@ -578,21 +719,28 @@ function worldThings() {
       const nx = ex.map ? p.x - ex.a * T + ex.sx * T : ex.sx * T + (T - p.w) / 2, ny = ex.sy * T - p.h - (side === 'bottom' ? 0 : 0.01);
       if (side === 'top') { p.vy = 0; p.vx = 0; }
       enterRoom(ex.to, nx, ny); events.push({ type: 'sala', id: ex.to });
-    } else if (side === 'bottom') { p.inv = 0; hurt(1, 'floresta', pcx); if (state.mode === 'play') { p.x = p.safeX; p.y = p.safeY; p.vx = 0; p.vy = 0; p.lock = 0.5; state.fade = 0.7; } }
+    } else if (side === 'bottom') { p.inv = 0; hurt(1, 'floresta', pcx, 'queda'); if (state.mode === 'play') { p.x = p.safeX; p.y = p.safeY; p.vx = 0; p.vy = 0; p.lock = 0.5; state.fade = 0.7; } }
     else { p.x = clamp(p.x, 0, RW - p.w); if (p.y + p.h < 0) { p.y = -p.h; p.vy = Math.max(0, p.vy); } }
   }
 }
 
 // ---- Um passo do jogo -----------------------------------------------------------------
+function viewZoom() { // no toque a câmera chega mais perto, e a figura fica maior; nas lutas de guardião ela abre
+  const z = Number(params.get('zoom')), base = z > 0 ? z : touchUI ? tune.mobile_zoom : 1;
+  return state.fight ? Math.min(base, tune.mobile_zoom_fight) : base;
+}
 function playStep(dt) {
   state.t += dt;
   if (state.fade > 0) state.fade = Math.max(0, state.fade - dt * 2.4);
   if (state.banner) { state.banner.t += dt; if (state.banner.t > state.banner.dur) state.banner = null; }
-  if (fx.say) { fx.say.t += dt; if (fx.say.t > fx.say.dur) fx.say = null; }
-  fx.shake = Math.max(0, fx.shake - dt * 40);
+  if (fx.say) { fx.say.t += dt; if (fx.say.e.alive) { fx.say.x = fx.say.e.x + fx.say.e.w / 2; fx.say.y = fx.say.e.y; } if (fx.say.t > fx.say.dur) fx.say = null; }
+  if (fx.eco) { fx.eco.t += dt; if (fx.eco.t > 6.5) fx.eco = null; }
+  fx.shake = Math.max(0, fx.shake - dt * 40); fx.kick *= 0.78;
+  fx.zoom = lerp(fx.zoom, viewZoom(), Math.min(1, dt * 2.2));
   for (const q of fx.parts) { q.life += dt; q.vy += q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.97; }
   if (fx.parts.length) fx.parts = fx.parts.filter(q => q.life < q.max);
-  for (const q of fx.trail) q.a -= dt * 2.6; if (fx.trail.length) fx.trail = fx.trail.filter(q => q.a > 0);
+  for (const q of fx.trail) q.a -= dt * 2.6;
+  if (fx.trail.length) fx.trail = fx.trail.filter(q => q.a > 0);
   const p = state.p, r = ROOMS[state.room];
   musicStep(dt, r.mood, state.fight);
 
@@ -607,7 +755,11 @@ function playStep(dt) {
   } else if (state.mode === 'black') { state.modeT += dt; if (state.modeT >= 0.6) respawn(); }
   else if (state.mode === 'pose') { // o momento do movimento novo
     state.modeT += dt; p.t += dt; p.vy += 1800 * dt; moveBody(p, dt, false);
-    if (state.modeT >= 3.4) { state.mode = 'play'; banner('Ímpeto de Cinza', touchUI ? 'o botão das duas setas atravessa o ar' : 'C atravessa o ar, uma vez por pulo', 5); }
+    if (state.modeT >= 3.4) {
+      state.mode = 'play';
+      if (state.poseItem === 'asas') banner('Asas de Cinza', touchUI ? 'toque em pular de novo, no ar' : 'aperte pular de novo, no ar', 5);
+      else banner('Ímpeto de Cinza', touchUI ? 'o botão das duas setas atravessa o ar' : 'C atravessa o ar, uma vez por pulo', 5);
+    }
   } else if (state.mode === 'ending') {
     state.modeT += dt; p.t += dt;
     if (state.modeT >= 4.2) { state.won = true; state.gained = 'Você acordou.'; state.score = state.brasas; wipeSave(); scene = 'results'; events.push({ type: 'fim' }); }
@@ -620,19 +772,20 @@ function playStep(dt) {
     if (state.mode === 'play') { updateShots(dt); worldThings(); }
   }
   // câmera: antecipa para onde você olha, para nas bordas da sala
-  const tx = clamp(p.x + p.w / 2 - W / 2 + p.face * 90, 0, r.w * T - W), ty = clamp(p.y + p.h / 2 - H * 0.58, 0, r.h * T - H);
+  const VW = W / fx.zoom, VH = H / fx.zoom;
+  const tx = clamp(p.x + p.w / 2 - VW / 2 + p.face * 80, 0, r.w * T - VW), ty = clamp(p.y + p.h / 2 - VH * 0.58, 0, r.h * T - VH);
   state.cam.x = lerp(state.cam.x, tx, Math.min(1, dt * 3.2)); state.cam.y = lerp(state.cam.y, ty, Math.min(1, dt * 5));
 }
 
 // ================= Desenhar =================
 function drawEnt(e) {
-  const o = { face: e.face, t: e.at, st: e.st, p: 0, rise: e.rise, flash: e.flash > 0 }, cx = e.x + e.w / 2, by = e.y + e.h;
+  const o = { face: e.face, t: e.at, st: e.st, p: 0, rise: e.rise, flash: e.flash > 0, rage: !!e.rage }, cx = e.x + e.w / 2 + (e.flash > 0 ? Math.sin(e.flash * 160) * 3 : 0), by = e.y + e.h;
   if (e.k === 'carcaca') { o.p = e.st === 'windup' ? e.t / tune.carcaca_windup : e.st === 'slam' ? e.t / 0.3 : e.st === 'recover' ? e.t / tune.carcaca_recover : 0; drawCarcaca(ctx, cx, by, o); }
-  else if (e.k === 'mariposa') { o.st = e.st === 'tele' ? 'tele' : e.st; o.tilt = e.tilt || 0; drawMariposa(ctx, cx, e.y + e.h / 2, o); }
+  else if (e.k === 'mariposa') { o.tilt = e.tilt || 0; drawMariposa(ctx, cx, e.y + e.h / 2, o); }
   else if (e.k === 'espinheiro') { o.p = e.st === 'bristle' ? e.t / tune.espinheiro_bristle : e.st === 'fire' ? e.t / 0.45 : 0; drawEspinheiro(ctx, cx, by, o); }
   else if (e.k === 'vigia') {
     const k = (d) => clamp(e.t / d, 0, 1);
-    if (e.st === 'roar') { o.head = -0.5; o.arm = -0.9 - Math.sin(e.t * 30) * 0.05; o.arm2 = 1.2; o.st = 'tele'; }
+    if (e.st === 'roar' || e.st === 'rage') { o.head = -0.5; o.arm = -0.9 - Math.sin(e.t * 30) * 0.05; o.arm2 = 1.2; o.st = 'tele'; }
     else if (e.st === 'tele') { o.tilt = 0.55 * ease(k(tune.vigia_telegraph)); o.head = 0.3; o.arm = 1.1; o.arm2 = 1.2; }
     else if (e.st === 'charge') { o.tilt = 0.6; o.head = 0.3; o.arm = 1.3; o.arm2 = 1.4; }
     else if (e.st === 'stun') { o.tilt = -0.12 + Math.sin(e.t * 9) * 0.05; o.head = 0.6 + Math.sin(e.t * 7) * 0.2; o.arm = 0.1; }
@@ -645,9 +798,12 @@ function drawEnt(e) {
     drawVigia(ctx, cx, by, o); ctx.globalAlpha = 1;
   } else if (e.k === 'enlutada') {
     o.alpha = e.alpha; o.tilt = e.tilt || 0;
-    o.arms = e.st === 'rain' || e.st === 'wisps' || e.st === 'roar' ? Math.min(1, e.t * 2.5) : 0;
+    o.arms = e.st === 'rain' || e.st === 'wisps' || e.st === 'roar' || e.st === 'rage' ? Math.min(1, e.t * 2.5) : 0;
     if (e.st === 'tired') o.tilt = 0.12 + Math.sin(e.t * 4) * 0.03;
     drawEnlutada(ctx, cx, by, o);
+  } else if (e.k === 'rainha') {
+    o.alpha = e.alpha; o.tilt = e.tilt || 0; o.st = e.st === 'dive' ? 'tele' : e.st === 'dive2' ? 'dive' : e.st;
+    drawRainha(ctx, cx, e.y + e.h / 2, o);
   }
 }
 function drawDynTiles(r, cx, cy) { // blocos que mudam: parede rachada, treliça, portão
@@ -671,54 +827,71 @@ function drawDynTiles(r, cx, cy) { // blocos que mudam: parede rachada, treliça
   }
 }
 function drawWorld() {
-  const r = ROOMS[state.room], m = MOODS[r.mood], p = state.p, t = state.t;
+  const r = ROOMS[state.room], m = MOODS[r.mood], p = state.p, t = state.t, Z = fx.zoom, VW = W / Z, VH = H / Z;
   if (fx.artRoom !== state.room) { fx.art = buildRoomArt(r); fx.artRoom = state.room; }
-  const art = fx.art, cx = Math.round(state.cam.x + (fx.shake > 0 ? (vr() - 0.5) * fx.shake : 0)), cy = Math.round(state.cam.y + (fx.shake > 0 ? (vr() - 0.5) * fx.shake : 0));
-  const camx = clamp(state.cam.x, 0, r.w * T - W), camy = clamp(state.cam.y, 0, r.h * T - H);
-  ctx.drawImage(art.sky, 0, 0);
-  for (const L of art.layers) ctx.drawImage(L.c, -Math.round(camx * L.par), -Math.round(camy * L.par));
-  if (art.heart) glow(ctx, art.heart.x - camx * 0.3, art.heart.y - camy * 0.3, 300 + Math.sin(t * 1.3) * 20, PAL.violet, state.flags.enlutada ? 0.12 : 0.34 + 0.1 * Math.sin(t * 1.3));
-  if (art.shafts) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.34 + 0.08 * Math.sin(t * 0.7); ctx.drawImage(art.shafts, -((camx * 0.2) % 200), 0, W + 200, H); ctx.restore(); }
-  drawAsh(ctx, t, camx, camy, false, r.mood); drawFog(ctx, t, camx, r.mood, 0.16);
+  const art = fx.art, sh = fx.shake > 0 ? fx.shake : 0;
+  const camx = clamp(state.cam.x, 0, r.w * T - VW), camy = clamp(state.cam.y, 0, r.h * T - VH);
+  const cx = Math.round(camx + (sh ? (vr() - 0.5) * sh : 0) + fx.kick), cy = Math.round(camy + (sh ? (vr() - 0.5) * sh : 0));
+  ctx.save(); ctx.scale(Z, Z);
+  ctx.drawImage(art.sky, 0, 0, VW, VH);
+  for (const L of art.layers) ctx.drawImage(L.c, -Math.round(camx * L.par), -Math.round(camy * L.par + (H - VH) * (1 - L.par) * 0.7));
+  if (art.heart) glow(ctx, art.heart.x - camx * 0.3, art.heart.y - camy * 0.3 - (H - VH) * 0.5, 300 + Math.sin(t * 1.3) * 20, PAL.violet, state.flags.enlutada ? 0.12 : 0.34 + 0.1 * Math.sin(t * 1.3));
+  if (art.shafts) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.34 + 0.08 * Math.sin(t * 0.7); ctx.drawImage(art.shafts, -((camx * 0.2) % 200), 0, VW + 200, VH); ctx.restore(); }
+  drawAsh(ctx, t, camx, camy, false, r.mood); drawFog(ctx, t, camx, r.mood, r.mood === 'lake' ? 0.26 : 0.16);
 
   ctx.save(); ctx.translate(-cx, -cy);
   ctx.drawImage(art.back, 0, 0);
-  for (const gl of art.glows) if (gl.x > cx - 80 && gl.x < cx + W + 80 && gl.y > cy - 80 && gl.y < cy + H + 80) glow(ctx, gl.x, gl.y, gl.r, gl.c, gl.a * (0.65 + 0.35 * Math.sin(t * 1.6 + gl.ph)));
+  for (const gl of art.glows) if (gl.x > cx - 80 && gl.x < cx + VW + 80 && gl.y > cy - 80 && gl.y < cy + VH + 80) glow(ctx, gl.x, gl.y, gl.r, gl.c, gl.a * (0.65 + 0.35 * Math.sin(t * 1.6 + gl.ph)));
   if (r.beacon && !state.seen.R6) { const bx = r.beacon.x * T + 20, by = r.beacon.y * T; glow(ctx, bx, by - 40, 260, PAL.sproutDeep, 0.5 + 0.12 * Math.sin(t * 1.4)); glow(ctx, bx, by - 30, 90, PAL.sprout, 0.5); for (let i = 0; i < 5; i++) drawBroto(ctx, bx - 40 + i * 20, by, true, t + i * 1.3); }
+  if (r.hole && !state.seen.R9) { const hx = r.hole.x * T + 20, hy = r.hole.y * T; glow(ctx, hx, hy + 30, 150, PAL.violet, 0.32 + 0.1 * Math.sin(t * 1.2)); for (let i = 0; i < 5; i++) { const k = ((t * 0.25 + i * 0.2) % 1); glow(ctx, hx + Math.sin(i * 2.1 + t) * 26, hy + 40 - k * 110, 5, PAL.violetPale, (1 - k) * 0.8); } }
+  if (r.lake) drawLake(ctx, r, t, cx, VW);
   for (const b of r.brotos) drawBroto(ctx, b.x * T + 20, b.y * T, !!state.lit[b.id], t);
   if (state.room === 'R8') drawGreatSprout(ctx, 22 * T, 14 * T, state.endGrow, t);
   ctx.drawImage(art.terrain, 0, 0);
   drawDynTiles(r, cx, cy);
+  for (const ec of r.ecos) drawEco(ctx, ec.x * T + 20, ec.y * T, !!state.ecos[ec.id], t);
   for (const it of roomItems()) drawItem(ctx, it.x * T + 20, it.y * T, it.id, t);
   for (const s of state.shots) if (s.k === 'pillar') drawShot(ctx, s, t);
-  if (state.room === 'R8') { const e = state.ents.find(q => q.k === 'enlutada' && q.st === 'swoop'); if (e && e.t < 0.3 + tune.enlutada_swoop_warn + 0.4) { const k = clamp(e.t / (0.3 + tune.enlutada_swoop_warn), 0, 1); glow(ctx, e.tx, 14 * T - 6, 60 + k * 60, PAL.violet, 0.3 + 0.6 * k); ctx.fillStyle = rgba(PAL.violetPale, 0.3 + 0.6 * k); ctx.fillRect(e.tx - 70 * k, 14 * T - 3, 140 * k, 3); } }
+  for (const e of state.ents) { // onde o rasante ou o mergulho vai cair
+    const gyb = r.boss ? r.boss.y * T : 0;
+    if (e.k === 'enlutada' && e.st === 'swoop' && e.t < 0.3 + tune.enlutada_swoop_warn + 0.4) { const k = clamp(e.t / (0.3 + tune.enlutada_swoop_warn), 0, 1); glow(ctx, e.tx, gyb - 6, 60 + k * 60, PAL.violet, 0.3 + 0.6 * k); ctx.fillStyle = rgba(PAL.violetPale, 0.3 + 0.6 * k); ctx.fillRect(e.tx - 70 * k, gyb - 3, 140 * k, 3); }
+    if (e.k === 'rainha' && (e.st === 'dive' || e.st === 'dive2')) { const k = e.st === 'dive2' ? 1 : clamp(e.t / tune.rainha_warn, 0, 1); glow(ctx, e.tx, gyb - 6, 50 + k * 60, PAL.violet, 0.3 + 0.6 * k); ctx.fillStyle = rgba(PAL.violetPale, 0.3 + 0.6 * k); ctx.fillRect(e.tx - 60 * k, gyb - 3, 120 * k, 3); ctx.strokeStyle = rgba(PAL.violetPale, 0.12 + 0.2 * k); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(e.x + e.w / 2, e.y + e.h / 2); ctx.lineTo(e.tx, gyb - 4); ctx.stroke(); }
+  }
   for (const e of state.ents) if (e.alive) drawEnt(e);
   for (const s of state.shots) if (s.k !== 'pillar') drawShot(ctx, s, t);
   // a figura
   const pcx = p.x + p.w / 2, pfy = p.y + p.h;
-  for (const q of fx.trail) { ctx.globalAlpha = q.a * 0.5; drawPlayer(ctx, q.x, q.y, { face: q.face, t: 0, vx: 600, vy: 0, ground: false, atk: -1, dash: true, emberA: 0 }); } ctx.globalAlpha = 1;
+  for (const q of fx.trail) { ctx.globalAlpha = q.a * 0.5; drawPlayer(ctx, q.x, q.y, { face: q.face, t: 0, vx: 600, vy: 0, ground: false, atk: -1, dash: true, emberA: 0 }); }
+  ctx.globalAlpha = 1;
   const wakeDur = state.first ? 3.6 : 2.2, curl = state.mode === 'wake' ? clamp(1 - (state.modeT - wakeDur * 0.45) / (wakeDur * 0.4), 0, 1) : state.mode === 'dying' ? clamp(state.modeT / 0.5, 0, 1) : 0;
   const blink = p.inv > 0 && state.mode === 'play' && Math.floor(p.inv * 14) % 2 === 0;
   if (!blink && state.mode !== 'vortex' && state.mode !== 'black') {
-    drawPlayer(ctx, pcx, pfy, { face: p.face, t: p.t, vx: p.vx, vy: p.vy, ground: p.ground, atk: p.atk, dash: p.dashT > 0, heal: p.heal, hurt: p.inv > tune.hurt_invuln - 0.15, curl, strong: state.flags.lamina });
+    drawPlayer(ctx, pcx, pfy, { face: p.face, t: p.t, vx: p.vx, vy: p.vy, ground: p.ground, atk: p.atk, dash: p.dashT > 0, heal: p.heal, hurt: p.inv > tune.hurt_invuln - 0.15, curl, strong: state.flags.lamina, land: p.land });
     if (state.mode === 'pose') { const k = clamp(state.modeT / 3, 0, 1); glow(ctx, pcx, pfy - 24, 60 + 200 * k, PAL.violetPale, 0.5 * (1 - k * 0.6)); for (let i = 0; i < 6; i++) { const a = t * 2 + i * TAU / 6; glow(ctx, pcx + Math.cos(a) * (90 - 70 * k), pfy - 24 + Math.sin(a) * (90 - 70 * k), 9, PAL.violetPale, 0.9); } }
     if (p.heal > 0) { const k = p.heal / tune.heal_time; glow(ctx, pcx, pfy - 20, 70 - 40 * k, PAL.sprout, 0.25 + 0.5 * k); ctx.strokeStyle = rgba(PAL.sprout, 0.8); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(pcx, pfy - 20, 30, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke(); }
-    if (p.atk >= 0) drawSlash(ctx, pcx + (p.atkUp ? 0 : p.face * 6), pfy - 22 - (p.atkUp ? 12 : 0), p.face, clamp(p.atk / 0.22, 0, 1), p.atkUp, state.flags.lamina);
+    if (p.atk >= 0) drawSlash(ctx, pcx + (p.atkDir ? 0 : p.face * 6), pfy - 22 + (p.atkDir === 1 ? -12 : p.atkDir === 2 ? 14 : 0), p.face, clamp(p.atk / 0.22, 0, 1), p.atkDir, state.flags.lamina);
   }
-  for (const q of fx.parts) { const k = 1 - q.life / q.max; if (q.add) glow(ctx, q.x, q.y, q.s * 2.6, q.col, k); else { ctx.globalAlpha = k * 0.8; ctx.fillStyle = q.col; ctx.beginPath(); ctx.ellipse(q.x, q.y, q.s, q.s * 0.7, q.life * 6, 0, TAU); ctx.fill(); } } ctx.globalAlpha = 1;
+  for (const q of fx.parts) {
+    const k = 1 - q.life / q.max;
+    if (q.ln) { ctx.globalAlpha = k; ctx.strokeStyle = q.col; ctx.lineWidth = q.s; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q.x - q.vx * 0.035, q.y - q.vy * 0.035); ctx.stroke(); }
+    else if (q.add) glow(ctx, q.x, q.y, q.s * 2.6, q.col, k);
+    else { ctx.globalAlpha = k * 0.8; ctx.fillStyle = q.col; ctx.beginPath(); ctx.ellipse(q.x, q.y, q.s, q.s * 0.7, q.life * 6, 0, TAU); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
   if (art.canopy) { const inside = pcx > r.canopy.x0 * T - 20 && pcx < (r.canopy.x1 + 1) * T + 20 && pfy < 9.6 * T; fx.canopyA = lerp(fx.canopyA === undefined ? 1 : fx.canopyA, inside ? 0.3 : 1, 0.08); ctx.globalAlpha = fx.canopyA; ctx.drawImage(art.canopy.c, art.canopy.x, art.canopy.y); ctx.globalAlpha = 1; }
-  if (fx.say && fx.say.e.alive) { // a frase de quem lembra de você
-    const e = fx.say.e, s = fx.say, shown = s.text.slice(0, Math.floor(s.t * 34)), a = clamp(s.t * 4, 0, 1) * clamp((s.dur - s.t) * 2, 0, 1);
-    const lines = wrapLines(ctx, shown, 24, 440), bx = clamp(e.x + e.w / 2, cx + 240, cx + W - 240), by = Math.max(cy + 70, e.y - 26 - lines.length * 30);
+  if (fx.say) { // a frase de quem lembra de você
+    const s = fx.say, shown = s.text.slice(0, Math.floor(s.t * 34)), a = clamp(s.t * 4, 0, 1) * clamp((s.dur - s.t) * 2, 0, 1);
+    const lines = wrapLines(ctx, shown, 24, 440), bx = clamp(s.x, cx + 240, cx + VW - 240), by = Math.max(cy + 70, s.y - 26 - lines.length * 30);
     lines.forEach((ln, i) => textGlow(ctx, ln, bx, by + i * 30, 24, '#f1e8ff', PAL.violet, a, 'center', true));
   }
   ctx.restore();
 
   drawAsh(ctx, t, camx, camy, true, r.mood);
-  if (m.ember) drawEmbers(ctx, t, camx, camy, r.mood === 'limiar' || r.mood === 'heart' ? PAL.violet : PAL.emberHot);
-  if (art.fore) ctx.drawImage(art.fore.c, -Math.round(camx * art.fore.par), 0);
+  if (m.ember) drawEmbers(ctx, t, camx, camy, r.mood === 'limiar' || r.mood === 'heart' || r.mood === 'nest' ? PAL.violet : PAL.emberHot);
+  if (art.fore) ctx.drawImage(art.fore.c, -Math.round(camx * art.fore.par), VH - H);
+  ctx.restore();
   // escuridão com um vão de luz em volta da figura
-  const sx = p.x + p.w / 2 - cx, sy = p.y + p.h / 2 - cy, dg = ctx.createRadialGradient(sx, sy, 90, sx, sy, 620);
+  const sx = (p.x + p.w / 2 - cx) * Z, sy = (p.y + p.h / 2 - cy) * Z, dg = ctx.createRadialGradient(sx, sy, 90, sx, sy, 620);
   dg.addColorStop(0, 'rgba(2,6,9,0)'); dg.addColorStop(1, `rgba(2,6,9,${m.dark + 0.18})`); ctx.fillStyle = dg; ctx.fillRect(0, 0, W, H);
   glow(ctx, sx, sy, 190, '#ffd9a8', 0.13);
   if (state.fight) glow(ctx, W / 2, H / 2, 900, PAL.violetDeep, 0.1 + 0.04 * Math.sin(t * 3));
@@ -743,16 +916,22 @@ function drawHUD() {
   ctx.restore();
   if (state.banner) { const b = state.banner, a = clamp(b.t * 2, 0, 1) * clamp((b.dur - b.t) * 1.5, 0, 1);
     textGlow(ctx, b.title, W / 2, H * 0.74, 40, '#f4efe2', '#000', a); if (b.sub) textGlow(ctx, b.sub, W / 2, H * 0.74 + 42, 22, '#d6e2de', '#000', a); }
+  if (fx.eco) { // o eco: um resto de voz, no alto da tela
+    const e = fx.eco, a = clamp(e.t * 1.5, 0, 1) * clamp((6.5 - e.t) * 1.2, 0, 1), lines = wrapLines(ctx, e.text.slice(0, Math.floor(e.t * 30)), 28, 820);
+    lines.forEach((ln, i) => textGlow(ctx, ln, W / 2, 150 + i * 38, 28, '#eefcf8', PAL.sproutDeep, a, 'center', true));
+  }
 }
-function drawMap(ox, oy, u, v) { // o mapa se preenche sala a sala; marca a trava que você viu
+function drawMap(ox, oy, u, v) { // o mapa se preenche sala a sala; marca as travas que você viu
   for (const id of Object.keys(ROOMS)) {
     if (!state.seen[id]) continue;
     const r = ROOMS[id], x = ox + r.map.x * u, y = oy + r.map.y * v, w = r.map.w * u - 8, h = r.map.h * v - 8, here = id === state.room;
     ctx.fillStyle = here ? 'rgba(143,196,189,0.3)' : 'rgba(143,196,189,0.12)'; ctx.strokeStyle = here ? PAL.rim : 'rgba(143,196,189,0.5)'; ctx.lineWidth = here ? 2.4 : 1.4;
-    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 8) : ctx.rect(x, y, w, h); ctx.fill(); ctx.stroke();
-    text(r.name, x + w / 2, y + h / 2, 16, here ? '#f0f5f2' : '#c2d2cd');
+    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, 8); else ctx.rect(x, y, w, h); ctx.fill(); ctx.stroke();
+    ctx.font = `16px ${FONT}`; const fs = Math.max(14, Math.min(16, Math.floor(16 * (w - 10) / ctx.measureText(r.name).width))); // nomes longos encolhem para caber
+    text(r.name, x + w / 2, y + h / 2, fs, here ? '#f0f5f2' : '#c2d2cd');
     for (const b of r.brotos) if (state.lit[b.id]) { ctx.fillStyle = PAL.sprout; ctx.beginPath(); ctx.arc(x + (b.x / r.w) * w, y + h - 9, 4, 0, TAU); ctx.fill(); }
-    if (id === 'R2' && state.flags.ravina && !state.seen.R6) { const lx = x + (r.lock.x / r.w) * w, ly = y + h - 12; ctx.strokeStyle = PAL.violet; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(lx - 6, ly - 6); ctx.lineTo(lx + 6, ly + 6); ctx.moveTo(lx + 6, ly - 6); ctx.lineTo(lx - 6, ly + 6); ctx.stroke(); }
+    const locked = (id === 'R2' && state.flags.ravina && !state.seen.R6) || (id === 'R7' && state.flags.muro && !state.flags.asas);
+    if (locked) { const lx = x + (r.lock.x / r.w) * w, ly = y + h - 12; ctx.strokeStyle = PAL.violet; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(lx - 6, ly - 6); ctx.lineTo(lx + 6, ly + 6); ctx.moveTo(lx + 6, ly - 6); ctx.lineTo(lx - 6, ly + 6); ctx.stroke(); }
     if (here) { const p = state.p; ctx.fillStyle = PAL.ember; ctx.beginPath(); ctx.arc(x + clamp((p.x / (r.w * T)), 0.05, 0.95) * w, y + 10 + clamp(p.y / (r.h * T), 0, 1) * (h - 24), 4.5, 0, TAU); ctx.fill(); }
   }
 }
@@ -777,14 +956,15 @@ const scenes = {
     draw() {
       const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0e2a31'); g.addColorStop(1, '#1f575b'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = PAL.ink; ctx.fillRect(0, 470, W, H - 470); ctx.strokeStyle = rgba(PAL.ash, 0.5); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(0, 470); ctx.lineTo(W, 470); ctx.stroke();
-      const t = state.t, y = 470;
-      drawPlayer(ctx, 110, y, { face: 1, t, vx: 0, vy: 0, ground: true, atk: -1 }); text('A figura', 110, 520, 22, '#e6efe9');
-      drawBroto(ctx, 250, y, true, t); text('Broto', 250, 520, 22, '#e6efe9');
-      drawCarcaca(ctx, 410, y, { face: 1, t, st: 'walk', p: 0, rise: 1 }); text('Carcaça', 410, 520, 22, '#e6efe9');
-      drawMariposa(ctx, 580, y - 90, { face: 1, t, st: 'hover' }); text('Mariposa de Fuligem', 580, 520, 22, '#e6efe9');
-      drawEspinheiro(ctx, 760, y, { face: 1, t, st: 'walk', p: 0 }); text('Espinheiro', 760, 520, 22, '#e6efe9');
-      drawVigia(ctx, 950, y, { face: 1, t, st: 'idle' }); text('O Vigia Oco', 950, 520, 22, '#e6efe9');
-      drawEnlutada(ctx, 1150, y - 30, { face: -1, t, st: 'idle', arms: 0 }); text('A Enlutada', 1150, 520, 22, '#e6efe9');
+      const t = state.t, y = 470, lab = (n, x, row) => text(n, x, 512 + row * 30, 20, '#e6efe9');
+      drawPlayer(ctx, 80, y, { face: 1, t, vx: 0, vy: 0, ground: true, atk: -1 }); lab('A figura', 80, 0);
+      drawBroto(ctx, 190, y, true, t); lab('Broto', 190, 1);
+      drawCarcaca(ctx, 320, y, { face: 1, t, st: 'walk', p: 0, rise: 1 }); lab('Carcaça', 320, 0);
+      drawMariposa(ctx, 470, y - 90, { face: 1, t, st: 'hover' }); lab('Mariposa de Fuligem', 470, 1);
+      drawEspinheiro(ctx, 620, y, { face: 1, t, st: 'walk', p: 0 }); lab('Espinheiro', 620, 0);
+      drawVigia(ctx, 790, y, { face: 1, t, st: 'idle' }); lab('O Vigia Oco', 790, 1);
+      drawRainha(ctx, 990, y - 130, { face: 1, t, st: 'hover' }); lab('A Rainha de Fuligem', 990, 0);
+      drawEnlutada(ctx, 1190, y - 30, { face: -1, t, st: 'idle', arms: 0 }); lab('A Enlutada', 1190, 1);
       text('Sono de Cinza: as figuras', W / 2, 60, 30, '#e6efe9');
     },
   },
@@ -792,13 +972,13 @@ const scenes = {
     update() {
       const sv = loadSave();
       if (pressed('KeyN') && sv) { wipeSave(); reset(); scene = 'play'; sfx('wake'); return; }
-      if (pressed('Enter') || pressed('Space') || pressed('KeyZ')) { if (sv) continueGame(sv); else reset(); scene = 'play'; sfx('wake'); }
+      if (confirmTap()) { if (sv) continueGame(sv); else reset(); scene = 'play'; sfx('wake'); }
     },
     draw() {
       drawTitleBack(); const sv = loadSave();
       textGlow(ctx, TITLE, W / 2, 170, 92, '#f4efe2', PAL.violet, 1);
       text('uma floresta queimada · um sono do qual se acorda', W / 2, 242, 22, '#cfdcd8');
-      if (touchUI) { text('Toque nos botões da tela: andar à esquerda; pular, golpear, ímpeto e curar à direita', W / 2, 360, 22, '#dbe6e2'); text('Segure o botão da chama, parado, para curar', W / 2, 396, 22, '#dbe6e2'); }
+      if (touchUI) { text('Toque nos botões da tela: andar à esquerda; pular, golpear, ímpeto e curar à direita', W / 2, 350, 22, '#dbe6e2'); text('Segure o botão da chama, parado, para curar', W / 2, 386, 22, '#dbe6e2'); text('No ar, segure a chama e golpeie: o golpe vai para baixo e quica', W / 2, 422, 22, '#dbe6e2'); }
       else CONTROLS.forEach((c, i) => text(c, W / 2, 330 + i * 34, 21, '#dbe6e2'));
       const a = 0.6 + 0.4 * Math.sin(fx.titleT * 3);
       textGlow(ctx, touchUI ? (sv ? 'Toque para continuar' : 'Toque para começar') : (sv ? 'Enter: continuar de onde acordou' : 'Enter para começar'), W / 2, H - 110, 30, '#ffffff', PAL.sproutDeep, a);
@@ -852,21 +1032,28 @@ const scenes = {
     },
     draw() {
       drawWorld(); ctx.fillStyle = 'rgba(3,6,9,0.78)'; ctx.fillRect(0, 0, W, H);
-      textGlow(ctx, 'Pausa', W / 2, 80, 46, '#f4efe2', '#000', 1);
-      drawMap(W / 2 - 7 * 78, 150, 156, 96);
-      const y0 = 400; if (!touchUI) CONTROLS.forEach((c, i) => text(c, W / 2, y0 + i * 30, 19, '#d3dfdb'));
-      text(`Mortes: ${state.totalDeaths} · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2`, W / 2, H - 96, 21, '#e6efe9');
+      textGlow(ctx, 'Pausa', W / 2, 70, 44, '#f4efe2', '#000', 1);
+      drawMap(W / 2 - 4 * 152 + 4, 120, 152, 92);
+      const reg = Object.keys(state.deaths).filter(k => state.deaths[k] > 0 && LINES[k]).sort((a, b) => state.deaths[b] - state.deaths[a]);
+      const colC = touchUI || !reg.length ? -1 : 370, colR = !reg.length ? -1 : touchUI ? W / 2 : 910, y0 = 356;
+      if (!touchUI) CONTROLS.forEach((c, i) => text(c, reg.length ? colC : W / 2, y0 + i * 29, reg.length ? 17 : 19, '#d3dfdb'));
+      if (reg.length) { // o que lembra de você: quem te matou, e quantas vezes
+        text('O que lembra de você', colR, y0, 22, '#e7dcff');
+        reg.slice(0, 6).forEach((k, i) => { const n = state.deaths[k], top = topHow(k); text(`${LINES[k].name} · ${n} ${n === 1 ? 'vez' : 'vezes'}${mem(k) && k !== 'floresta' ? ' · já luta diferente' : ''}`, colR, y0 + 34 + i * 28, 18, mem(k) ? '#d9c2ff' : '#d3dfdb'); });
+      }
+      const ecosN = Object.keys(state.ecos).length;
+      text(`Mortes: ${state.totalDeaths} · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2 · Ecos: ${ecosN} de 7`, W / 2, H - 96, 21, '#e6efe9');
       text(touchUI ? 'Toque no botão de pausa para voltar' : (fx.confirmNew > 0 ? 'Aperte N de novo para apagar tudo e recomeçar' : 'P: voltar · N: recomeçar do zero'), W / 2, H - 56, 20, fx.confirmNew > 0 ? '#ffb9c6' : '#c6d4d0');
     },
   },
   results: {
-    update() { if (pressed('Enter') || pressed('Space')) { reset(); scene = 'title'; } },
+    update() { if (confirmTap()) { reset(); scene = 'title'; } },
     draw() {
       drawTitleBack(); ctx.fillStyle = 'rgba(210,255,240,0.1)'; ctx.fillRect(0, 0, W, H);
       textGlow(ctx, state.gained || 'Você acordou.', W / 2, 210, 78, '#f6fff9', PAL.sproutDeep, 1);
       const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
       text(`Você morreu ${state.totalDeaths} ${state.totalDeaths === 1 ? 'vez' : 'vezes'} e acordou todas elas.`, W / 2, 320, 26, '#e6efe9');
-      text(`Tempo desperta: ${m} min ${s < 10 ? '0' : ''}${s} s · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2`, W / 2, 364, 22, '#d3dfdb');
+      text(`Tempo desperta: ${m} min ${s < 10 ? '0' : ''}${s} s · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2 · Ecos: ${Object.keys(state.ecos).length} de 7`, W / 2, 364, 22, '#d3dfdb');
       text('Esta é uma fatia: a floresta continua depois daqui.', W / 2, 420, 21, '#d3dfdb');
       text(touchUI ? 'Toque para voltar ao início' : 'Enter para voltar ao início', W / 2, H - 90, 26, '#ffffff');
     },
@@ -881,6 +1068,7 @@ function step() {
 let last, acc = 0, ALPHA = 1; // ALPHA: how far the frame is between the last two steps
 function tick() {
   const now = clock.now();
+  pollPad();
   acc += Math.min(now - last, 0.25); last = now; // a stall never fast-forwards the game
   while (acc >= STEP) { step(); acc -= STEP; }
   ALPHA = acc / STEP; // draw between steps, so the view never judders

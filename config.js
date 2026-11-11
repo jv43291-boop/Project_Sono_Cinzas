@@ -34,8 +34,19 @@ window.CONFIG = {
   level_2_brasas: { value: 8, min: 2, max: 40, step: 1 },           // brasas para a brasa interior crescer (+1 vida)
   level_3_brasas: { value: 24, min: 4, max: 80, step: 1 },          // brasas para crescer de novo (+1 vida)
 
+  pogo_height: { value: 104, min: 40, max: 180, step: 4 },             // px que você sobe ao acertar um golpe para baixo
+  double_jump_height: { value: 112, min: 60, max: 180, step: 4 },      // px do segundo pulo (asas de cinza)
+  boss_hitstop: { value: 0.07, min: 0, max: 0.2, step: 0.01 },         // s de pausa ao acertar um guardião
+  hit_hitstop: { value: 0.05, min: 0, max: 0.2, step: 0.01 },          // s de pausa ao acertar um inimigo comum
+
   // ---- O que lembra de você ----
   speak_from_death: { value: 2, min: 1, max: 6, step: 1 },          // a partir de qual morte o inimigo fala
+
+  adapt_from_death: { value: 4, min: 2, max: 12, step: 1 },         // a partir de qual morte o inimigo muda o jeito de lutar
+
+  // ---- Segunda fase dos guardiões ----
+  phase2_at: { value: 0.5, min: 0.2, max: 0.8, step: 0.05 },        // fração da vida em que o guardião enfurece
+  phase2_speed: { value: 0.78, min: 0.5, max: 1, step: 0.02 },      // os avisos ficam mais curtos (x)
 
   // ---- Carcaça: lenta, bate forte ----
   carcaca_life: { value: 10, min: 2, max: 30, step: 1 },
@@ -70,6 +81,19 @@ window.CONFIG = {
   enlutada_rain_gap: { value: 170, min: 90, max: 320, step: 10 },   // px do vão seguro
   enlutada_swoop_warn: { value: 0.7, min: 0.3, max: 1.5, step: 0.05 },// s de aviso do rasante
   enlutada_tired: { value: 2.1, min: 0.6, max: 4, step: 0.1 },      // s cansada no chão
+
+  // ---- A Rainha de Fuligem (guardiã do ninho) ----
+  rainha_life: { value: 60, min: 20, max: 160, step: 5 },
+  rainha_warn: { value: 0.75, min: 0.3, max: 1.5, step: 0.05 },     // s de aviso do mergulho
+  rainha_dive: { value: 660, min: 350, max: 1100, step: 10 },       // px/s
+  rainha_stuck: { value: 1.4, min: 0.4, max: 3, step: 0.1 },        // s presa no chão depois do mergulho
+  rainha_dart: { value: 430, min: 200, max: 800, step: 10 },        // px/s dos dardos
+  rainha_wind: { value: 110, min: 0, max: 260, step: 10 },          // px/s que o vento das asas te empurra
+
+  // ---- Celular ----
+  mobile_zoom: { value: 1.3, min: 1, max: 1.8, step: 0.05 },        // aproximação da câmera no toque (a figura fica maior)
+  mobile_zoom_fight: { value: 1.05, min: 1, max: 1.5, step: 0.05 }, // nas lutas de guardião a câmera abre
+  vibration: { value: 1, min: 0, max: 1, step: 1 },                 // 1 vibra ao levar dano, 0 não
 
   // ---- Clima ----
   ash_amount: { value: 110, min: 0, max: 260, step: 10 },           // flocos de cinza na tela
