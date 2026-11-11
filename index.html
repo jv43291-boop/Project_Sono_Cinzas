@@ -1,0 +1,910 @@
+<!doctype html>
+<!-- PROTOTYPE - NOT FOR PRODUCTION -->
+<!-- Question: o silêncio e o luto chegam de verdade em quem joga, e a luta punitiva dá vontade de tentar de novo? -->
+<!-- Date: 2026-11-10 -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#05090b">
+<title>Sono de Cinza</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
+  body { font-variant-numeric: tabular-nums; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+  canvas { display: block; margin: 0 auto; touch-action: none; }
+  /* Botões de toque (Android): só aparecem depois do primeiro toque na tela */
+  #touch { position: fixed; inset: 0; pointer-events: none; display: none; }
+  #touch.on { display: block; }
+  .tb { position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%; box-sizing: border-box;
+    background: rgba(185, 215, 210, 0.09); border: 1.5px solid rgba(185, 215, 210, 0.34);
+    display: flex; align-items: center; justify-content: center; }
+  .tb.on, .tb .half.on { background: rgba(185, 215, 210, 0.3); }
+  .tb svg { width: 54%; height: 54%; fill: none; stroke: rgba(232, 242, 238, 0.88); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  #pad { left: calc(4vmin + env(safe-area-inset-left)); bottom: 6vmin; width: 40vmin; height: 19vmin; border-radius: 9.5vmin; overflow: hidden; }
+  #pad .half { flex: 1; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  #pad .half svg { width: 34%; height: 54%; }
+  #tup { left: calc(17vmin + env(safe-area-inset-left)); bottom: 28vmin; width: 13vmin; height: 13vmin; }
+  #tjump { right: calc(5vmin + env(safe-area-inset-right)); bottom: 6vmin; width: 20vmin; height: 20vmin; }
+  #tatk { right: calc(27vmin + env(safe-area-inset-right)); bottom: 9vmin; width: 18vmin; height: 18vmin; }
+  #tdash { right: calc(8vmin + env(safe-area-inset-right)); bottom: 29vmin; width: 15vmin; height: 15vmin; }
+  #theal { right: calc(28vmin + env(safe-area-inset-right)); bottom: 30vmin; width: 13vmin; height: 13vmin; }
+  #tpause { right: calc(3vmin + env(safe-area-inset-right)); top: 3vmin; width: 10vmin; height: 10vmin; }
+  #tmute { right: calc(15vmin + env(safe-area-inset-right)); top: 3vmin; width: 10vmin; height: 10vmin; }
+  #rotate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 18px;
+    background: #05090b; color: #cfe0dc; font: 20px Georgia, serif; text-align: center; }
+  #rotate svg { width: 96px; height: 96px; fill: none; stroke: #8fc4bd; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="touch">
+  <div class="tb" id="pad">
+    <div class="half" id="padL"><svg viewBox="0 0 24 24"><path d="M15 4 L7 12 L15 20"/></svg></div>
+    <div class="half" id="padR"><svg viewBox="0 0 24 24"><path d="M9 4 L17 12 L9 20"/></svg></div>
+  </div>
+  <div class="tb" id="tup" data-k="ArrowUp"><svg viewBox="0 0 24 24"><path d="M5 15 L12 8 L19 15"/></svg></div>
+  <div class="tb" id="tjump" data-k="KeyZ"><svg viewBox="0 0 24 24"><path d="M12 20 V5 M5 11 L12 4 L19 11"/></svg></div>
+  <div class="tb" id="tatk" data-k="KeyX"><svg viewBox="0 0 24 24"><path d="M5 19 L19 5 M5 19 L8.5 18 L6 15.5 Z M4 9 C7 4 13 3 18 7"/></svg></div>
+  <div class="tb" id="tdash" data-k="KeyC"><svg viewBox="0 0 24 24"><path d="M5 6 L11 12 L5 18 M12 6 L18 12 L12 18"/></svg></div>
+  <div class="tb" id="theal" data-k="ArrowDown"><svg viewBox="0 0 24 24"><path d="M12 3 C16 8 18 11 18 15 A6 6 0 0 1 6 15 C6 12 8 10 9 8 C10 10 11 10 12 3 Z"/></svg></div>
+  <div class="tb" id="tpause" data-k="KeyP"><svg viewBox="0 0 24 24"><path d="M8 5 V19 M16 5 V19"/></svg></div>
+  <div class="tb" id="tmute" data-k="KeyM"><svg viewBox="0 0 24 24"><path d="M4 10 H8 L13 5 V19 L8 14 H4 Z M17 9 C19 11 19 13 17 15"/></svg></div>
+</div>
+<div id="rotate">
+  <svg viewBox="0 0 48 48"><rect x="6" y="14" width="36" height="20" rx="3"/><path d="M14 8 C20 3 28 3 34 8 M34 8 L33 3 M34 8 L29 8"/></svg>
+  <div>Gire o aparelho para jogar deitado</div>
+</div>
+<script src="config.js"></script>
+<script src="world.js"></script>
+<script src="art.js"></script>
+<script src="sfx.js"></script>
+<script>
+'use strict';
+// Sono de Cinza. A partir do starter do one-shot: o passo fixo, o relógio, window.game e as cenas
+// play e figures ficam como os checks leem. O mundo está em world.js, a arte em art.js, o som em sfx.js.
+
+// ---- Built to be checked ----------------------------------------------------------------
+const params = new URLSearchParams(location.search);
+const tune = new Proxy({}, { get: (_, k) => CONFIG[k].value }); // live: tune.speed is CONFIG.speed.value
+const STEP = 1 / 60;            // simulation step in seconds; motion is per second, never per frame
+const W = 1280, H = 720;        // logical size
+const PIXEL = false;
+const FONT = "'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif";
+const TITLE = 'Sono de Cinza';
+const CONTROLS = ['Setas ou A/D: andar', 'Z ou Espaço: pular (segure para ir mais alto)', 'X: golpear (com ↑, para cima)',
+  'C: ímpeto, depois que você o ganhar', 'Segurar ↓ parado: curar, gastando calor', 'P: pausa e mapa · M: som']; // shown on the title screen
+const clock = window.GAME_CLOCK || { now: () => performance.now() / 1000 }; // a check may inject one
+const CHEAP = params.get('render') === 'cheap'; // a headless shot or check; players never see it
+let seed;
+function rng() { // mulberry32; every gameplay random call reads this, never Math.random
+  seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+const events = []; // window.game.events: anything the game wants a run to see
+
+// ---- Screen ---------------------------------------------------------------------------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const COARSE = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+function fit() { // fills the window at any size and pixel ratio
+  const k = Math.min(innerWidth / W, innerHeight / H);
+  const s = PIXEL ? Math.max(1, Math.floor(k)) : k;
+  const r = PIXEL ? 1 : Math.min(s * (devicePixelRatio || 1), COARSE ? 1.25 : 2); // teto: celulares não pintam 4K à toa
+  canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
+  canvas.style.width = Math.round(W * s) + 'px'; canvas.style.height = Math.round(H * s) + 'px';
+  canvas.style.marginTop = Math.max(0, Math.floor((innerHeight - H * s) / 2)) + 'px';
+  canvas.style.imageRendering = PIXEL ? 'pixelated' : 'auto';
+  ctx.setTransform(r, 0, 0, r, 0, 0); ctx.imageSmoothingEnabled = !PIXEL;
+}
+addEventListener('resize', fit); fit();
+function clear(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); }
+function text(s, x, y, size, c, align = 'center') {
+  ctx.fillStyle = c; ctx.font = `${size}px ${FONT}`; ctx.textAlign = align;
+  ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+}
+
+// ---- Input: keys by position (event.code), OS key repeat ignored ------------------------
+const down = new Set(), hit = new Set();
+const pressed = code => hit.has(code); // true for one step after the key goes down
+const ACT = { left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'], up: ['ArrowUp', 'KeyW'], down: ['ArrowDown', 'KeyS'],
+  jump: ['KeyZ', 'Space'], attack: ['KeyX', 'KeyJ'], dash: ['KeyC', 'KeyK', 'ShiftLeft'], pause: ['KeyP', 'Escape'] };
+const held = a => ACT[a].some(c => down.has(c));
+const tapped = a => ACT[a].some(c => hit.has(c));
+addEventListener('keydown', e => {
+  startAudio();
+  if (!e.repeat) { down.add(e.code); hit.add(e.code); }
+  if (e.code === 'Space' || e.code.startsWith('Arrow') || e.code === 'Tab') e.preventDefault();
+});
+addEventListener('keyup', e => down.delete(e.code));
+addEventListener('blur', () => down.clear());
+
+// ---- Toque (Android): botões na tela que acendem as mesmas teclas -----------------------
+let touchUI = false;
+const touchEl = document.getElementById('touch');
+function touchOn() {
+  if (touchUI) return; touchUI = true; touchEl.classList.add('on');
+  try { const d = document.documentElement; if (d.requestFullscreen && !document.fullscreenElement) d.requestFullscreen({ navigationUI: 'hide' }).then(() => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); }).catch(() => {}); } catch (e) { /* sem tela cheia: joga assim mesmo */ }
+}
+addEventListener('pointerdown', e => {
+  startAudio();
+  if (e.pointerType === 'touch') touchOn();
+  if (e.target === canvas && scene !== 'play') { // toque na tela sai do título e do fim; no rodapé do título, recomeça do zero
+    const r = canvas.getBoundingClientRect(), ly = (e.clientY - r.top) / r.height * H;
+    hit.add(scene === 'title' && ly > H - 90 && loadSave() ? 'KeyN' : 'Enter');
+  }
+});
+addEventListener('contextmenu', e => e.preventDefault());
+if (params.get('touch')) touchOn(); // ?touch=1 mostra os botões de toque no computador
+for (const b of touchEl.querySelectorAll('.tb[data-k]')) {
+  const k = b.dataset.k;
+  const on = e => { e.preventDefault(); b.setPointerCapture && b.setPointerCapture(e.pointerId); b.classList.add('on'); down.add(k); hit.add(k); };
+  const off = e => { e.preventDefault(); b.classList.remove('on'); down.delete(k); };
+  b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
+}
+{ // o direcional: um botão largo; o lado do dedo decide, e deslizar troca de lado
+  const pad = document.getElementById('pad'), L = document.getElementById('padL'), R = document.getElementById('padR');
+  const set = side => { for (const [el, k, s] of [[L, 'ArrowLeft', -1], [R, 'ArrowRight', 1]]) { if (side === s) { if (!down.has(k)) hit.add(k); down.add(k); el.classList.add('on'); } else { down.delete(k); el.classList.remove('on'); } } };
+  const at = e => { const r = pad.getBoundingClientRect(); set(e.clientX < r.left + r.width / 2 ? -1 : 1); };
+  pad.addEventListener('pointerdown', e => { e.preventDefault(); pad.setPointerCapture && pad.setPointerCapture(e.pointerId); at(e); });
+  pad.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') at(e); });
+  for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(n, () => set(0));
+}
+
+// ---- Audio: started on first input, mute on M --------------------------------------------
+let audio = null, muted = false;
+function startAudio() {
+  if (!audio) {
+    const ac = window.GAME_AUDIO || new (window.AudioContext || window.webkitAudioContext)(); // a check may inject one
+    const out = ac.createGain(); out.gain.value = muted ? 0 : tune.volume;
+    out.connect(ac.destination); audio = { ac, out };
+    soundInit();
+  }
+  if (audio.ac.state === 'suspended') audio.ac.resume();
+}
+function setMuted(m) { muted = m; if (audio) audio.out.gain.value = m ? 0 : tune.volume; }
+addEventListener('tune', () => setMuted(muted)); // the tweak panel (an add-on), when added, moved a value: the volume follows
+
+// ---- O progresso guardado: nada do que você ganhou se perde ---------------------------
+const SAVE_KEY = 'sono-de-cinza-v1';
+function loadSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function save() {
+  if (params.get('room')) return; // sala escolhida pelo endereço: não mexe no save
+  const s = state, o = { flags: s.flags, lit: s.lit, seen: s.seen, deaths: s.deaths, totalDeaths: s.totalDeaths, brasas: s.brasas, level: s.level,
+    calor: s.calor, maxLife: s.p.maxLife, spawn: s.spawn, time: Math.round(s.time), wallHp: s.wallHp };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* sem armazenamento: o jogo segue sem save */ }
+}
+function wipeSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nada a apagar */ } }
+
+// ---- O jogo ---------------------------------------------------------------------------
+let scene, state;
+const fx = { parts: [], trail: [], shake: 0, art: null, artRoom: '', snap: null, shards: [], say: null, titleT: 0, confirmNew: 0 };
+const SPEC = {
+  carcaca: { w: 40, h: 70, hp: 'carcaca_life', brasas: 2, kb: 70 },
+  mariposa: { w: 30, h: 24, hp: 'mariposa_life', brasas: 1, kb: 260 },
+  espinheiro: { w: 44, h: 24, hp: 'espinheiro_life', brasas: 1, kb: 150 },
+  vigia: { w: 80, h: 104, hp: 'vigia_life', brasas: 10, kb: 0, boss: true },
+  enlutada: { w: 60, h: 120, hp: 'enlutada_life', brasas: 20, kb: 0, boss: true },
+};
+function makeEnt(d, id) {
+  const s = SPEC[d.k];
+  const e = { id, k: d.k, x: d.x * T + T / 2 - s.w / 2, y: d.y * T - s.h, w: s.w, h: s.h, vx: 0, vy: 0, hp: tune[s.hp], face: -1, st: 'idle', t: 0, at: 0,
+    alive: true, flash: 0, ground: false, hx: 0, hy: 0, cd: 0, rise: 1, n: 0, tx: 0, ty: 0, alpha: 1, hitWall: 0, last: '' };
+  if (d.k === 'carcaca' && d.sleeping) { e.st = 'sleep'; e.rise = 0; e.face = 1; }
+  if (d.k === 'mariposa') { e.y = d.y * T - s.h / 2; e.hx = e.x + s.w / 2; e.hy = d.y * T; e.st = 'hover'; e.cd = 0.8; }
+  if (d.k === 'espinheiro') { e.st = 'walk'; e.cd = tune.espinheiro_interval * 0.5; }
+  if (d.k === 'vigia') { e.st = 'wait'; e.face = 1; }
+  if (d.k === 'enlutada') { e.st = 'wait'; e.y = d.y * T - 44 - s.h; e.hx = e.x; e.hy = e.y; }
+  return e;
+}
+function newPlayer(x, y) {
+  return { x, y, w: 22, h: 38, vx: 0, vy: 0, face: 1, ground: false, coy: 0, buf: 0, jumping: false, atk: -1, atkCd: 0, atkUp: false, atkHit: [],
+    dashT: 0, dashCd: 0, dashUsed: false, dashDir: 1, inv: 0, lock: 0, heal: 0, life: tune.player_life, maxLife: tune.player_life, t: 0, safeX: x, safeY: y, hitWall: 0 };
+}
+function enterRoom(id, x, y) {
+  const r = ROOMS[id]; state.room = id; state.seen[id] = true; state.shots = []; state.ents = []; state.fight = false; state.endGrow = 0;
+  r.ents.forEach((d, i) => { const eid = id + ':' + i; if (!state.dead[eid]) state.ents.push(makeEnt(d, eid)); });
+  if (r.boss && !state.flags[r.boss.k]) state.ents.push(makeEnt(r.boss, id + ':boss'));
+  const p = state.p; p.x = x; p.y = y; p.safeX = x; p.safeY = y;
+  state.cam.x = clamp(p.x + p.w / 2 - W / 2, 0, r.w * T - W); state.cam.y = clamp(p.y + p.h / 2 - H * 0.58, 0, r.h * T - H);
+  state.fade = 1; fx.parts.length = 0; fx.trail.length = 0; fx.say = null;
+}
+function reset() {
+  seed = Number(params.get('seed')) || CONFIG.seed;
+  // state.gained: what this run gained or learned, the high the ending shows.
+  const st = ROOMS.R1.start, px = st.x * T, py = st.y * T - 38;
+  state = { t: 0, time: 0, score: 0, gained: '', mode: 'wake', modeT: 0, room: 'R1', p: newPlayer(px, py), cam: { x: 0, y: 0 },
+    flags: { impeto: false, lamina: false, fragmento: false, atalho: false, vigia: false, enlutada: false, quebrada: false, ravina: false },
+    lit: {}, seen: {}, deaths: {}, totalDeaths: 0, brasas: 0, level: 1, calor: 0, wallHp: 2, spawn: { room: 'R1', x: px, y: py },
+    ents: [], shots: [], dead: {}, greeted: {}, fight: false, hitstop: 0, fade: 1, killer: '', killLine: '', killCount: 0, banner: null, endGrow: 0, won: false, first: true };
+  const dbg = params.get('room'); // ?room=R5&impeto=1&lamina=1: começa numa sala, para olhar e testar
+  if (dbg && ROOMS[dbg]) {
+    if (params.get('impeto')) state.flags.impeto = true;
+    if (params.get('lamina')) state.flags.lamina = true;
+    const r = ROOMS[dbg], sx = Number(params.get('x')) || (r.start ? r.start.x : r.boss ? (r.boss.trigger > r.boss.x ? r.w - 4 : 4) : 4);
+    let sy = 0; while (sy < r.h && r.g[sy * r.w + sx] === 1) sy++; while (sy < r.h && r.g[sy * r.w + sx] !== 1) sy++;
+    if (params.get('y')) sy = Number(params.get('y'));
+    state.spawn = { room: dbg, x: sx * T, y: sy * T - 38 }; state.mode = 'play'; state.first = false;
+  }
+  enterRoom(state.spawn.room, state.spawn.x, state.spawn.y);
+}
+function continueGame(sv) {
+  reset();
+  Object.assign(state.flags, sv.flags || {}); state.lit = sv.lit || {}; state.seen = sv.seen || {}; state.deaths = sv.deaths || {};
+  state.totalDeaths = sv.totalDeaths || 0; state.brasas = sv.brasas || 0; state.level = sv.level || 1; state.calor = sv.calor || 0; state.time = sv.time || 0;
+  state.wallHp = sv.wallHp === undefined ? 2 : sv.wallHp; state.p.maxLife = sv.maxLife || tune.player_life; state.p.life = state.p.maxLife;
+  if (sv.spawn && ROOMS[sv.spawn.room]) state.spawn = sv.spawn;
+  state.first = false; enterRoom(state.spawn.room, state.spawn.x, state.spawn.y);
+}
+
+// ---- Blocos e colisão -----------------------------------------------------------------
+function tileCode(tx, ty) { const r = ROOMS[state.room]; return tx < 0 || ty < 0 || tx >= r.w || ty >= r.h ? 0 : r.g[ty * r.w + tx]; }
+function tileSolid(tx, ty, enemy) {
+  const r = ROOMS[state.room];
+  if (tx < 0 || tx >= r.w || ty >= r.h) return !!enemy; // a figura atravessa as bordas onde há saída; os outros ficam
+  if (ty < 0) ty = 0; // acima da sala vale a linha de cima: teto fechado segue fechado, céu aberto segue aberto
+  const c = r.g[ty * r.w + tx];
+  return c === 1 || (c === 4 && !state.flags.quebrada) || (c === 5 && !state.flags.atalho) || (c === 6 && state.fight);
+}
+function moveBody(b, dt, enemy) {
+  b.hitWall = 0;
+  let nx = b.x + b.vx * dt;
+  const y0 = Math.floor(b.y / T), y1 = Math.floor((b.y + b.h - 0.01) / T);
+  if (b.vx > 0) { const tx = Math.floor((nx + b.w) / T); for (let ty = y0; ty <= y1; ty++) if (tileSolid(tx, ty, enemy)) { nx = tx * T - b.w - 0.01; b.vx = 0; b.hitWall = 1; break; } }
+  else if (b.vx < 0) { const tx = Math.floor(nx / T); for (let ty = y0; ty <= y1; ty++) if (tileSolid(tx, ty, enemy)) { nx = (tx + 1) * T + 0.01; b.vx = 0; b.hitWall = -1; break; } }
+  b.x = nx;
+  let ny = b.y + b.vy * dt;
+  const x0 = Math.floor(b.x / T), x1 = Math.floor((b.x + b.w - 0.01) / T), prevBottom = b.y + b.h;
+  b.ground = false;
+  if (b.vy >= 0) {
+    const ty = Math.floor((ny + b.h) / T);
+    for (let tx = x0; tx <= x1; tx++) if (tileSolid(tx, ty, enemy) || (tileCode(tx, ty) === 2 && prevBottom <= ty * T + 0.5)) { ny = ty * T - b.h; b.vy = 0; b.ground = true; break; }
+  } else {
+    const ty = Math.floor(ny / T);
+    for (let tx = x0; tx <= x1; tx++) if (tileSolid(tx, ty, enemy)) { ny = (ty + 1) * T + 0.01; b.vy = 0; break; }
+  }
+  b.y = ny;
+}
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function groundAhead(e) { const tx = Math.floor((e.face > 0 ? e.x + e.w + 4 : e.x - 4) / T), ty = Math.floor((e.y + e.h + 4) / T); return tileSolid(tx, ty, true) || tileCode(tx, ty) === 2; }
+
+// ---- Poeira, cinza e faíscas (só para os olhos) ---------------------------------------
+function puff(x, y, n, col, sp, o = {}) {
+  for (let i = 0; i < n && fx.parts.length < 320; i++) { const a = o.up ? -Math.PI * vr() : vr() * TAU, v = sp * (0.3 + vr() * 0.9);
+    fx.parts.push({ x: x + (vr() - 0.5) * (o.w || 8), y: y + (vr() - 0.5) * (o.h || 8), vx: Math.cos(a) * v, vy: Math.sin(a) * v - (o.lift || 0), life: 0, max: (o.life || 0.6) * (0.5 + vr()), s: (o.s || 3) * (0.5 + vr()), col, g: o.g === undefined ? 300 : o.g, add: !!o.add }); }
+}
+function banner(title, sub, dur = 3.4) { state.banner = { title, sub: sub || '', t: 0, dur }; }
+
+// ---- O que lembra de você -------------------------------------------------------------
+function countFor(k) { return (state.deaths[k] || 0) - (tune.speak_from_death - 2); } // desloca os degraus quando o ajuste muda
+function greet(e) { // ao te ver de novo, se já te matou vezes o bastante
+  if (state.greeted[e.k]) return; state.greeted[e.k] = true;
+  const n = countFor(e.k), line = n >= 2 ? lineFor(LINES[e.k].greet, n) : null;
+  if (line) { fx.say = { e, text: line, t: 0, dur: 3.2 + line.length * 0.045 }; sfx('voice'); events.push({ type: 'fala', de: e.k, mortes: state.deaths[e.k] }); }
+}
+
+// ---- Dano ---------------------------------------------------------------------------------
+function hurt(dmg, key, srcX) {
+  const p = state.p; if (p.inv > 0 || state.mode !== 'play') return;
+  p.life -= dmg; p.inv = tune.hurt_invuln; p.vx = (p.x + p.w / 2 >= srcX ? 1 : -1) * 330; p.vy = -310; p.dashT = 0; p.heal = 0; p.atk = -1; p.jumping = false;
+  fx.shake = 12; state.hitstop = 0.09; sfx('hurt'); puff(p.x + p.w / 2, p.y + p.h / 2, 12, PAL.ember, 220, { add: true, life: 0.5 });
+  if (p.life <= 0) die(key);
+}
+function die(key) {
+  const p = state.p; p.life = 0; state.mode = 'dying'; state.modeT = 0; state.killer = key;
+  state.deaths[key] = (state.deaths[key] || 0) + 1; state.totalDeaths++;
+  const n = countFor(key); state.killCount = state.deaths[key]; state.killLine = n >= 2 ? (lineFor(LINES[key].kill, n) || '') : '';
+  fx.snap = null; fx.say = null; sfx('death'); events.push({ type: 'morte', por: key, vezes: state.deaths[key] }); save();
+}
+function respawn() {
+  state.dead = {}; state.greeted = {}; state.shots = [];
+  const p = state.p; p.life = p.maxLife; p.vx = 0; p.vy = 0; p.inv = 0; p.atk = -1; p.dashT = 0; p.heal = 0; p.face = 1;
+  enterRoom(state.spawn.room, state.spawn.x, state.spawn.y);
+  state.mode = 'wake'; state.modeT = 0; sfx('wake');
+}
+function addBrasas(n) {
+  state.brasas += n; const need = state.level === 1 ? tune.level_2_brasas : state.level === 2 ? tune.level_3_brasas : 1e9;
+  if (state.brasas >= need && state.level < 3) { state.level++; state.p.maxLife++; state.p.life = state.p.maxLife; banner('A brasa cresce', 'mais uma vida'); sfx('level'); save(); }
+}
+function damageEnt(e, dmg, dir) {
+  const s = SPEC[e.k];
+  if (e.st === 'dying' || e.st === 'wait' || (e.k === 'enlutada' && e.alpha < 0.6)) return false;
+  e.hp -= dmg; e.flash = 0.12; sfx('hit');
+  puff(e.x + e.w / 2, e.y + e.h * 0.45, 8, '#aab8b5', 200, { life: 0.5 }); puff(e.x + e.w / 2, e.y + e.h * 0.45, 4, PAL.violet, 240, { add: true, life: 0.4 });
+  if (e.k === 'carcaca' && e.st === 'sleep') { e.st = 'rise'; e.t = 0; }
+  if (s.kb && e.st !== 'windup' && e.st !== 'slam') { e.vx = dir * s.kb; if (e.k === 'mariposa') { e.vy = -120; if (e.st === 'dive') { e.st = 'recover'; e.t = 0; } } }
+  if (e.hp <= 0) killEnt(e);
+  return true;
+}
+function killEnt(e) {
+  const s = SPEC[e.k], cx = e.x + e.w / 2, cy = e.y + e.h / 2;
+  sfx('kill'); fx.shake = Math.max(fx.shake, s.boss ? 16 : 6);
+  if (s.boss) { e.st = 'dying'; e.t = 0; e.vx = 0; e.vy = 0; state.shots = []; fx.say = { e, text: LINES[e.k].fall, t: 0, dur: 5 }; sfx('voice'); return; }
+  e.alive = false; state.dead[e.id] = true; addBrasas(s.brasas);
+  puff(cx, cy, 26, '#8a9a98', 260, { life: 0.9, s: 4 }); puff(cx, cy, 10, PAL.violet, 200, { add: true, life: 0.7, g: -60 }); puff(cx, cy, 6, PAL.ember, 160, { add: true, life: 0.9, g: -80 });
+}
+
+// ---- A figura -----------------------------------------------------------------------------
+function updatePlayer(dt) {
+  const p = state.p, wasGround = p.ground;
+  p.t += dt; p.inv -= dt; p.atkCd -= dt; p.dashCd -= dt; p.buf -= dt;
+  const grav = 2 * tune.jump_height / (tune.jump_apex_time * tune.jump_apex_time), v0 = grav * tune.jump_apex_time;
+  const locked = p.lock > 0; if (locked) p.lock -= dt; // um instante sem controle depois dos espinhos
+  const ax = locked ? 0 : (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
+  // curar: parado, no chão, exposto
+  if (held('down') && !locked && p.ground && ax === 0 && p.atk < 0 && p.dashT <= 0 && state.calor >= tune.heal_cost && p.life < p.maxLife) {
+    p.heal += dt;
+    if (p.heal >= tune.heal_time) { p.life++; state.calor -= tune.heal_cost; p.heal = 0; sfx('heal'); puff(p.x + p.w / 2, p.y + p.h / 2, 16, PAL.sprout, 120, { add: true, g: -120, life: 0.9 }); }
+  } else p.heal = 0;
+  // ímpeto: um traço reto no ar ou no chão
+  if (tapped('dash') && !locked && state.flags.impeto && p.dashCd <= 0 && !p.dashUsed && p.heal === 0) {
+    p.dashT = tune.dash_time; p.dashCd = tune.dash_cooldown; p.dashUsed = !p.ground; p.dashDir = ax || p.face; p.face = p.dashDir; p.vy = 0; p.jumping = false; sfx('dash');
+    puff(p.x + p.w / 2, p.y + p.h / 2, 10, PAL.violetPale, 160, { add: true, life: 0.4, g: 0 });
+  }
+  if (p.dashT > 0) {
+    p.dashT -= dt; p.vx = p.dashDir * tune.dash_speed; p.vy = 0;
+    fx.trail.push({ x: p.x + p.w / 2, y: p.y + p.h, face: p.face, a: 0.5 });
+    if (p.dashT <= 0) p.vx = p.dashDir * tune.run_speed;
+  } else {
+    const target = p.heal > 0 ? 0 : ax * tune.run_speed, acc = (p.ground ? 3400 : 2400) * dt;
+    p.vx = p.vx < target ? Math.min(target, p.vx + acc) : Math.max(target, p.vx - acc);
+    if (ax && p.atk < 0) p.face = ax;
+    if (tapped('jump') && !locked) p.buf = tune.jump_buffer;
+    if (p.buf > 0 && p.coy > 0 && p.heal === 0) { p.vy = -v0; p.buf = 0; p.coy = 0; p.jumping = true; sfx('jump'); puff(p.x + p.w / 2, p.y + p.h, 5, '#9fb0ad', 70, { up: true, life: 0.4 }); }
+    if (p.jumping && !held('jump') && p.vy < 0) { p.vy *= tune.jump_cut; p.jumping = false; }
+    if (p.vy >= 0) p.jumping = false;
+    p.vy = Math.min(tune.max_fall, p.vy + grav * (p.vy > 0 ? tune.fall_gravity : 1) * dt);
+  }
+  // golpe: sai na hora
+  if (tapped('attack') && !locked && p.atkCd <= 0 && p.heal === 0) { p.atk = 0; p.atkCd = tune.attack_cooldown; p.atkUp = held('up'); p.atkHit = []; sfx('slash'); }
+  if (p.atk >= 0) { p.atk += dt; if (p.atk <= 0.13) attackHits(); if (p.atk > 0.22) p.atk = -1; }
+  moveBody(p, dt, false);
+  if (p.ground) {
+    p.coy = tune.coyote_time; p.dashUsed = false;
+    if (!wasGround) { sfx('land'); puff(p.x + p.w / 2, p.y + p.h, 7, '#9fb0ad', 90, { up: true, life: 0.45 }); }
+    else if (Math.abs(p.vx) > 100 && Math.floor(p.t * 5.6) !== Math.floor((p.t - dt) * 5.6)) { sfx('step'); puff(p.x + p.w / 2, p.y + p.h, 2, '#9fb0ad', 40, { up: true, life: 0.35 }); }
+    const fx0 = Math.floor(p.x / T), fx1 = Math.floor((p.x + p.w - 0.01) / T), fy = Math.floor((p.y + p.h + 2) / T); // último chão seguro
+    if (tileCode(fx0, fy) === 1 && tileCode(fx1, fy) === 1 && tileCode(fx0 - 1, fy - 1) !== 3 && tileCode(fx1 + 1, fy - 1) !== 3) { p.safeX = p.x; p.safeY = p.y; }
+  } else p.coy -= dt;
+  // espinhos: ferem e te devolvem ao último chão firme
+  const tx0 = Math.floor(p.x / T), tx1 = Math.floor((p.x + p.w - 0.01) / T), tyb = Math.floor((p.y + p.h - 4) / T);
+  for (let tx = tx0; tx <= tx1; tx++) if (tileCode(tx, tyb) === 3 && p.y + p.h > tyb * T + 12 && state.mode === 'play') {
+    if (p.inv <= 0.4) { p.inv = 0; hurt(1, 'floresta', p.x + p.w / 2); }
+    if (state.mode === 'play') { p.x = p.safeX; p.y = p.safeY; p.vx = 0; p.vy = 0; p.lock = 0.5; state.fade = 0.7; }
+    break;
+  }
+}
+function attackHits() {
+  const p = state.p, cx = p.x + p.w / 2, R = tune.attack_range;
+  const hb = p.atkUp ? { x: cx - 36, y: p.y - R, w: 72, h: R + 12 } : { x: p.face > 0 ? cx : cx - R, y: p.y - 14, w: R, h: p.h + 22 };
+  const dmg = state.flags.lamina ? tune.blade_damage_strong : tune.blade_damage;
+  let landed = false;
+  for (const e of state.ents) if (e.alive && !p.atkHit.includes(e.id) && overlap(hb, e)) { p.atkHit.push(e.id); if (damageEnt(e, dmg, p.face)) { landed = true; state.calor = Math.min(tune.calor_max, state.calor + 1); } }
+  for (const s of state.shots) if (s.k === 'wisp' && !s.gone && overlap(hb, { x: s.x - 12, y: s.y - 12, w: 24, h: 24 })) { s.gone = true; landed = true; puff(s.x, s.y, 10, PAL.violet, 200, { add: true, life: 0.5 }); sfx('hit'); }
+  if (!state.flags.quebrada && !p.atkHit.includes('wall')) { // a parede rachada
+    const a0 = Math.floor(hb.x / T), a1 = Math.floor((hb.x + hb.w) / T), b0 = Math.floor(hb.y / T), b1 = Math.floor((hb.y + hb.h) / T);
+    let found = false; for (let ty = b0; ty <= b1 && !found; ty++) for (let tx = a0; tx <= a1; tx++) if (tileCode(tx, ty) === 4) { found = true; break; }
+    if (found) { p.atkHit.push('wall'); state.wallHp--; landed = true; fx.shake = 6; puff(p.face > 0 ? hb.x + hb.w : hb.x, p.y + 10, 14, '#7f8f8c', 220, { life: 0.7 });
+      if (state.wallHp <= 0) { state.flags.quebrada = true; sfx('break'); fx.shake = 12; puff(54.5 * T + 20, 12.5 * T, 40, '#7f8f8c', 320, { life: 1, s: 5, w: 80, h: 120 }); save(); } else sfx('clank'); }
+  }
+  if (landed) { state.hitstop = 0.05; if (!p.atkUp) p.vx = -p.face * tune.hit_recoil; fx.shake = Math.max(fx.shake, 4); }
+}
+
+// ---- Os inimigos: três tipos, três jeitos de atacar ---------------------------------------
+function updCarcaca(e, dt) { // lenta; avisa, bate forte, e fica presa no próprio golpe
+  const p = state.p, ecx = e.x + e.w / 2, dx = p.x + p.w / 2 - ecx, adx = Math.abs(dx), dy = Math.abs(p.y + p.h - (e.y + e.h));
+  if (e.st === 'sleep') { if (adx < 330 && dy < 130) { e.st = 'rise'; e.t = 0; e.face = dx >= 0 ? 1 : -1; sfx('tele'); } }
+  else if (e.st === 'rise') { e.rise = Math.min(1, e.t / 1.5); if (e.t > 0.5) greet(e); if (e.t >= 1.5) { e.st = 'walk'; e.t = 0; } }
+  else if (e.st === 'idle') { if (adx < 440 && dy < 160) { e.st = 'walk'; e.t = 0; greet(e); } }
+  else if (e.st === 'walk') {
+    e.face = dx >= 0 ? 1 : -1; e.vx = groundAhead(e) ? e.face * tune.carcaca_speed : 0;
+    if (adx < 94 && dy < 84) { e.st = 'windup'; e.t = 0; e.vx = 0; sfx('tele'); }
+  } else if (e.st === 'windup') {
+    e.vx = 0;
+    if (e.t >= tune.carcaca_windup) {
+      e.st = 'slam'; e.t = 0; sfx('slam'); fx.shake = 10;
+      const hb = { x: e.face > 0 ? ecx : ecx - 108, y: e.y + 4, w: 108, h: e.h + 2 };
+      puff(ecx + e.face * 70, e.y + e.h, 18, '#9fb0ad', 220, { up: true, life: 0.7, s: 4 });
+      if (overlap(hb, p)) hurt(tune.carcaca_damage, 'carcaca', ecx);
+    }
+  } else if (e.st === 'slam') { if (e.t >= 0.3) { e.st = 'recover'; e.t = 0; } }
+  else if (e.st === 'recover') { if (e.t >= tune.carcaca_recover) { e.st = 'walk'; e.t = 0; } }
+  if (e.st !== 'walk') e.vx *= 0.8;
+  e.vy += 1800 * dt; moveBody(e, dt, true);
+  if (e.st !== 'sleep' && !(e.st === 'rise' && e.rise < 0.6) && overlap(e, p)) hurt(1, 'carcaca', ecx);
+}
+function updMariposa(e, dt) { // paira, treme, mergulha
+  const p = state.p, ecx = e.x + e.w / 2, ecy = e.y + e.h / 2, dx = p.x + p.w / 2 - ecx, dy = p.y + p.h / 2 - ecy, d = Math.hypot(dx, dy) || 1;
+  e.cd -= dt;
+  if (e.st === 'hover') {
+    const tx = e.hx + Math.sin(e.at * 0.9 + e.hx) * 54, ty = e.hy + Math.sin(e.at * 1.7) * 16;
+    e.vx = lerp(e.vx, (tx - ecx) * 1.6, Math.min(1, dt * 4)); e.vy = lerp(e.vy, (ty - ecy) * 1.6, Math.min(1, dt * 4)); e.face = dx >= 0 ? 1 : -1; e.tilt = 0;
+    if (d < 350 && e.cd <= 0) { e.st = 'tele'; e.t = 0; greet(e); }
+  } else if (e.st === 'tele') {
+    e.vx *= 0.85; e.vy *= 0.85;
+    if (e.t >= tune.mariposa_telegraph) { e.st = 'dive'; e.t = 0; e.vx = dx / d * tune.mariposa_dive; e.vy = dy / d * tune.mariposa_dive; e.tilt = Math.atan2(dy, dx) - Math.PI / 2; sfx('thorn'); }
+  } else if (e.st === 'dive') {
+    if (e.t > 0.75 || tileSolid(Math.floor(ecx / T), Math.floor((ecy + 12) / T), true)) { e.st = 'recover'; e.t = 0; e.vx *= 0.3; e.vy = -80; }
+  } else if (e.st === 'recover') {
+    e.vx *= 0.92; e.vy = lerp(e.vy, -50, Math.min(1, dt * 3)); e.tilt = 0;
+    if (e.t >= tune.mariposa_recover) { e.st = 'hover'; e.t = 0; e.cd = 0.7; }
+  }
+  e.x += e.vx * dt; e.y += e.vy * dt;
+  if (overlap(e, p)) hurt(1, 'mariposa', ecx);
+}
+function updEspinheiro(e, dt) { // patrulha, eriça, atira dois espinhos em arco
+  const p = state.p, ecx = e.x + e.w / 2, dx = p.x + p.w / 2 - ecx, adx = Math.abs(dx), ady = Math.abs(p.y + p.h - (e.y + e.h));
+  e.cd -= dt;
+  if (e.st === 'walk') {
+    if (e.hitWall || !groundAhead(e)) e.face = -e.face;
+    e.vx = e.face * tune.espinheiro_speed;
+    if (e.cd <= 0 && adx < 540 && ady < 180) { e.st = 'bristle'; e.t = 0; e.vx = 0; e.face = dx >= 0 ? 1 : -1; greet(e); sfx('tele'); }
+  } else if (e.st === 'bristle') {
+    e.vx = 0;
+    if (e.t >= tune.espinheiro_bristle) {
+      e.st = 'fire'; e.t = 0; const dir = dx >= 0 ? 1 : -1; sfx('thorn');
+      state.shots.push({ k: 'thorn', x: ecx, y: e.y + 2, vx: dir * tune.thorn_speed, vy: -110, g: 620, t: 0, life: 2.4, dmg: 1, key: 'espinheiro' });
+      state.shots.push({ k: 'thorn', x: ecx, y: e.y + 2, vx: dir * tune.thorn_speed * 0.7, vy: -340, g: 620, t: 0, life: 2.4, dmg: 1, key: 'espinheiro' });
+    }
+  } else if (e.st === 'fire') { e.vx = 0; if (e.t >= 0.45) { e.st = 'walk'; e.t = 0; e.cd = tune.espinheiro_interval; } }
+  e.vy += 1800 * dt; moveBody(e, dt, true);
+  if (overlap(e, p)) hurt(1, 'espinheiro', ecx);
+}
+// O Vigia Oco: investe até a parede e fica atordoado; salta e levanta ondas no chão; varre com a garra de perto.
+function updVigia(e, dt) {
+  const p = state.p, r = ROOMS[state.room], ecx = e.x + e.w / 2, pcx = p.x + p.w / 2, dx = pcx - ecx, adx = Math.abs(dx), next = (st) => { e.st = st; e.t = 0; };
+  if (e.st === 'wait') { if (pcx < r.boss.trigger * T) { next('roar'); state.fight = true; sfx('gate'); sfx('roar'); fx.shake = 10; banner(LINES.vigia.name, '', 3); greet(e); events.push({ type: 'guardiao', k: 'vigia' }); } return; }
+  if (e.st === 'dying') { if (e.t > 0.2 && Math.floor(e.t * 12) !== Math.floor((e.t - dt) * 12)) puff(ecx + (vr() - 0.5) * 60, e.y + vr() * e.h, 8, '#8a9a98', 180, { life: 1, s: 4, g: -40 }); if (e.t >= 2.6) bossFallen(e); return; }
+  if (e.st === 'roar') { if (e.t >= 1.5) next('idle'); }
+  else if (e.st === 'idle') {
+    e.face = dx >= 0 ? 1 : -1;
+    if (e.t >= 0.4) { if (adx < 150) next('swipeup'); else { const c = rng() < 0.55 ? 'tele' : 'crouch'; if (c === e.last && rng() < 0.6) next(c === 'tele' ? 'crouch' : 'tele'); else next(c); e.last = e.st; if (e.st === 'tele') sfx('tele'); } }
+  } else if (e.st === 'tele') { e.face = dx >= 0 ? 1 : -1; if (e.t >= tune.vigia_telegraph) { next('charge'); e.vx = e.face * tune.vigia_charge; sfx('roar'); } }
+  else if (e.st === 'charge') {
+    e.vx = e.face * tune.vigia_charge;
+    if (Math.floor(e.t * 20) !== Math.floor((e.t - dt) * 20)) puff(ecx - e.face * 30, e.y + e.h, 4, '#9fb0ad', 120, { up: true, life: 0.5, s: 4 });
+  } else if (e.st === 'stun') { if (e.t >= tune.vigia_stun) next('idle'); }
+  else if (e.st === 'crouch') { e.face = dx >= 0 ? 1 : -1; if (e.t >= 0.5) { next('leap'); e.vy = -780; e.vx = clamp(dx / 0.82, -560, 560); sfx('jump'); } }
+  else if (e.st === 'leap') {
+    if (e.ground && e.t > 0.2) {
+      next('rest'); e.vx = 0; sfx('slam'); fx.shake = 14; puff(ecx, e.y + e.h, 26, '#9fb0ad', 260, { up: true, life: 0.8, s: 5 });
+      for (const d of [-1, 1]) state.shots.push({ k: 'shock', x: ecx + d * 40, y: e.y + e.h, vx: d * tune.vigia_shock, vy: 0, g: 0, t: 0, life: 3, dmg: 1, key: 'vigia' });
+    }
+  } else if (e.st === 'swipeup') { if (e.t >= 0.45) { next('swipe'); sfx('slash'); const hb = { x: e.face > 0 ? ecx : ecx - 150, y: e.y + 10, w: 150, h: e.h }; if (overlap(hb, p)) hurt(2, 'vigia', ecx); } }
+  else if (e.st === 'swipe') { if (e.t >= 0.3) next('rest'); }
+  else if (e.st === 'rest') { if (e.t >= 1.0) next('idle'); }
+  if (e.st !== 'charge' && e.st !== 'leap') e.vx *= 0.8;
+  e.vy += 1900 * dt; moveBody(e, dt, true);
+  if (e.st === 'charge' && (e.hitWall || e.t > 2)) { next('stun'); sfx('slam'); fx.shake = 16; puff(e.face > 0 ? e.x + e.w : e.x, e.y + e.h * 0.5, 24, '#9fb0ad', 300, { life: 0.9, s: 5 }); }
+  if (overlap(e, p)) hurt(e.st === 'charge' ? 2 : 1, 'vigia', ecx);
+}
+// A Enlutada: chuva de fogo violeta com um vão seguro longe de você; rasantes sobre onde você está; chamas que te seguem.
+const ENL_CYCLE = ['rain', 'swoop', 'swoop', 'tired', 'wisps', 'swoop', 'tired'];
+function updEnlutada(e, dt) {
+  const p = state.p, r = ROOMS[state.room], ecx = e.x + e.w / 2, pcx = p.x + p.w / 2, gy = r.boss.y * T, A0 = 3 * T + 20, A1 = 42 * T - 20, mid = (A0 + A1) / 2;
+  const next = (st) => { e.st = st; e.t = 0; e.n = 0; }, go = (x, y, k) => { e.x = lerp(e.x, x - e.w / 2, Math.min(1, dt * k)); e.y = lerp(e.y, y - e.h, Math.min(1, dt * k)); };
+  const advance = () => { e.cd = (e.cd + 1) % ENL_CYCLE.length; next(ENL_CYCLE[e.cd]); if (e.st === 'swoop') e.n = -1; };
+  if (e.st === 'wait') { e.y = e.hy + Math.sin(e.at * 1.3) * 6; if (pcx > r.boss.trigger * T) { next('roar'); state.fight = true; sfx('gate'); sfx('wail'); banner(LINES.enlutada.name, '', 3); greet(e); e.cd = -1; events.push({ type: 'guardiao', k: 'enlutada' }); } return; }
+  if (e.st === 'dying') { e.alpha = clamp(1 - (e.t - 1.2) / 1.6, 0, 1); go(ecx, e.y + e.h - dt * 10, 1); if (Math.floor(e.t * 14) !== Math.floor((e.t - dt) * 14)) puff(ecx + (vr() - 0.5) * 50, e.y + vr() * e.h, 6, PAL.violet, 160, { add: true, life: 1, g: -90 }); if (e.t >= 3) bossFallen(e); return; }
+  e.face = pcx >= ecx ? 1 : -1; e.alpha = 1;
+  if (e.st === 'roar') { go(ecx, gy - 60 + Math.sin(e.at * 2) * 5, 2); if (e.t >= 1.7) advance(); }
+  else if (e.st === 'rain') { // três ondas; o vão seguro fica a um ímpeto de distância
+    go(mid, 250, 2.2);
+    const times = [0.5, 1.9, 3.3];
+    if (e.n < 3 && e.t >= times[e.n]) {
+      e.n++; const dist = lerp(300, 430, rng()), side = (pcx - dist > A0 + 90 && (pcx + dist > A1 - 90 || rng() < 0.5)) ? -1 : 1, gx = clamp(pcx + side * dist, A0 + 90, A1 - 90), half = tune.enlutada_rain_gap / 2;
+      for (let x = A0 + 30; x <= A1 - 30; x += 78) if (Math.abs(x - gx) > half + 30) state.shots.push({ k: 'pillar', x, y: gy, w: 72, t: 0, warn: tune.enlutada_rain_warn, live: 0.45, dmg: 2, key: 'enlutada', vx: 0, vy: 0 });
+      sfx('tele');
+    }
+    if (e.t >= times[2] + tune.enlutada_rain_warn + 0.7) advance();
+  } else if (e.st === 'swoop') { // some, reaparece de um lado, marca o chão e passa rasante
+    const warn = tune.enlutada_swoop_warn;
+    if (e.n === -1) { e.n = 0; e.tx = clamp(pcx, A0 + 60, A1 - 60); e.ty = pcx > mid ? -1 : 1; e.hx = clamp(e.tx - e.ty * 430, A0 + 30, A1 - 30); sfx('tele'); }
+    if (e.t < 0.3) e.alpha = 1 - e.t / 0.3;
+    else if (e.t < 0.3 + warn) { e.x = e.hx - e.w / 2; e.y = 150 - e.h + 110; e.alpha = clamp((e.t - 0.3) / 0.25, 0, 1); e.face = e.ty; }
+    else { const k = (e.t - 0.3 - warn) / 0.85; if (e.n === 0) { e.n = 1; sfx('dash'); }
+      const x0 = e.hx, x2 = clamp(e.tx + e.ty * 430, A0 + 30, A1 - 30), x = lerp(x0, x2, k), y = 260 + (gy - 8 - 260) * (1 - Math.pow(2 * k - 1, 2));
+      e.x = x - e.w / 2; e.y = y - e.h; e.face = e.ty; e.tilt = e.ty * 0.5 * (1 - Math.abs(2 * k - 1) * 0.5);
+      if (Math.floor(e.t * 30) !== Math.floor((e.t - dt) * 30)) puff(x, y - 40, 3, PAL.violet, 60, { add: true, life: 0.5, g: 0 });
+      if (k >= 1) { e.tilt = 0; advance(); } }
+  } else if (e.st === 'tired') { e.tilt = 0; go(clamp(ecx, A0 + 80, A1 - 80), gy - 6, 3); if (e.t >= tune.enlutada_tired) advance(); }
+  else if (e.st === 'wisps') {
+    go(mid + Math.sin(e.at) * 120, 330, 1.8);
+    if (e.n < 3 && e.t >= 0.5 + e.n * 0.45) { e.n++; sfx('wail'); state.shots.push({ k: 'wisp', x: ecx + (e.n - 2) * 60, y: e.y + 10, vx: (e.n - 2) * 120, vy: -160, g: 0, t: 0, life: 6.5, dmg: 1, key: 'enlutada' }); }
+    if (e.t >= 2.6) advance();
+  }
+  if (e.alpha > 0.6 && overlap({ x: e.x + 8, y: e.y + 10, w: e.w - 16, h: e.h - 14 }, p)) hurt(e.st === 'swoop' ? 2 : 1, 'enlutada', ecx);
+}
+function bossFallen(e) {
+  e.alive = false; state.flags[e.k] = true; state.fight = false; state.shots = []; addBrasas(SPEC[e.k].brasas); sfx('gate');
+  puff(e.x + e.w / 2, e.y + e.h / 2, 50, '#8a9a98', 320, { life: 1.4, s: 5 });
+  state.p.life = state.p.maxLife; save();
+}
+function updateShots(dt) {
+  const p = state.p;
+  for (const s of state.shots) {
+    s.t += dt;
+    if (s.k === 'pillar') { if (s.t >= s.warn && s.t - dt < s.warn) { sfx('pillar'); fx.shake = Math.max(fx.shake, 5); } if (s.t >= s.warn && s.t < s.warn + s.live * 0.75 && Math.abs(p.x + p.w / 2 - s.x) < s.w / 2 + 4) hurt(s.dmg, s.key, s.x); if (s.t > s.warn + s.live) s.gone = true; continue; }
+    if (s.k === 'wisp') { const dx = p.x + p.w / 2 - s.x, dy = p.y + p.h / 2 - s.y, d = Math.hypot(dx, dy) || 1; s.vx = lerp(s.vx, dx / d * 175, Math.min(1, dt * 1.6)); s.vy = lerp(s.vy, dy / d * 175, Math.min(1, dt * 1.6)); }
+    s.vy += s.g * dt; s.x += s.vx * dt; s.y += s.vy * dt;
+    const hb = s.k === 'shock' ? { x: s.x - 20, y: s.y - 44, w: 40, h: 44 } : { x: s.x - 8, y: s.y - 8, w: 16, h: 16 };
+    if (overlap(hb, p)) { hurt(s.dmg, s.key, s.x); if (s.k !== 'shock') s.gone = true; }
+    if (s.t > s.life) s.gone = true;
+    if (s.k !== 'wisp' && tileSolid(Math.floor((s.x + Math.sign(s.vx) * 12) / T), Math.floor((s.y - (s.k === 'shock' ? 10 : 0)) / T), true)) { s.gone = true; puff(s.x, s.y - (s.k === 'shock' ? 20 : 0), 6, '#9fb0ad', 120, { life: 0.4 }); }
+  }
+  state.shots = state.shots.filter(s => !s.gone);
+}
+const UPD = { carcaca: updCarcaca, mariposa: updMariposa, espinheiro: updEspinheiro, vigia: updVigia, enlutada: updEnlutada };
+
+// ---- Coisas do mundo: brotos, itens, saídas -------------------------------------------
+function roomItems() {
+  const r = ROOMS[state.room], out = r.items.filter(i => !state.flags[i.id]);
+  if (state.room === 'R5' && state.flags.vigia && !state.flags.impeto) out.push({ id: 'impeto', x: 20, y: 14 });
+  return out;
+}
+function worldThings() {
+  const p = state.p, r = ROOMS[state.room], pcx = p.x + p.w / 2, pfy = p.y + p.h;
+  for (const b of r.brotos) if (Math.abs(pcx - (b.x * T + 20)) < 34 && Math.abs(pfy - b.y * T) < 50) {
+    if (!state.lit[b.id]) { state.lit[b.id] = true; p.life = p.maxLife; sfx('broto'); puff(b.x * T + 20, b.y * T - 26, 22, PAL.sprout, 150, { add: true, g: -110, life: 1.2 }); events.push({ type: 'broto', id: b.id }); }
+    if (state.spawn.room !== state.room || state.spawn.bid !== b.id) { state.spawn = { room: state.room, x: b.x * T + 20 - p.w / 2, y: b.y * T - p.h, bid: b.id }; save(); }
+  }
+  for (const it of roomItems()) if (Math.abs(pcx - (it.x * T + 20)) < 30 && Math.abs(pfy - it.y * T) < 60) {
+    state.flags[it.id] = true;
+    if (it.id === 'lamina') { banner('Lâmina reforçada', 'seus golpes ferem mais'); sfx('pickup'); }
+    if (it.id === 'fragmento') { p.maxLife++; p.life = p.maxLife; banner('Fragmento de brasa', 'mais uma vida'); sfx('pickup'); }
+    if (it.id === 'impeto') { state.mode = 'pose'; state.modeT = 0; p.vx = 0; sfx('power'); }
+    puff(it.x * T + 20, it.y * T - 30, 26, it.id === 'impeto' ? PAL.violetPale : PAL.ember, 200, { add: true, g: -60, life: 1.1 }); save();
+  }
+  if (state.room === 'R2' && pcx > 24 * T) state.flags.ravina = true;
+  if (state.room === 'R8' && state.flags.enlutada) { // o fim: um grande broto nasce no coração queimado
+    state.endGrow = Math.min(1, state.endGrow + STEP / 3);
+    if (state.endGrow >= 1 && Math.abs(pcx - 22 * T) < 40 && state.mode === 'play') { state.mode = 'ending'; state.modeT = 0; p.vx = 0; sfx('end'); }
+  }
+  // saídas
+  const RW = r.w * T, RH = r.h * T; let side = '';
+  if (pcx < 0) side = 'left'; else if (pcx > RW) side = 'right'; else if (p.y > RH) side = 'bottom'; else if (p.y + p.h < 0) side = 'top';
+  if (side) {
+    const tx = Math.floor(pcx / T), ex = r.exits.find(q => q.side === side && (q.a === undefined || (tx >= q.a && tx <= q.b)));
+    if (ex) {
+      if (ex.flag && !state.flags[ex.flag]) { state.flags[ex.flag] = true; sfx('gate'); save(); }
+      const nx = ex.map ? p.x - ex.a * T + ex.sx * T : ex.sx * T + (T - p.w) / 2, ny = ex.sy * T - p.h - (side === 'bottom' ? 0 : 0.01);
+      if (side === 'top') { p.vy = 0; p.vx = 0; }
+      enterRoom(ex.to, nx, ny); events.push({ type: 'sala', id: ex.to });
+    } else if (side === 'bottom') { p.inv = 0; hurt(1, 'floresta', pcx); if (state.mode === 'play') { p.x = p.safeX; p.y = p.safeY; p.vx = 0; p.vy = 0; p.lock = 0.5; state.fade = 0.7; } }
+    else { p.x = clamp(p.x, 0, RW - p.w); if (p.y + p.h < 0) { p.y = -p.h; p.vy = Math.max(0, p.vy); } }
+  }
+}
+
+// ---- Um passo do jogo -----------------------------------------------------------------
+function playStep(dt) {
+  state.t += dt;
+  if (state.fade > 0) state.fade = Math.max(0, state.fade - dt * 2.4);
+  if (state.banner) { state.banner.t += dt; if (state.banner.t > state.banner.dur) state.banner = null; }
+  if (fx.say) { fx.say.t += dt; if (fx.say.t > fx.say.dur) fx.say = null; }
+  fx.shake = Math.max(0, fx.shake - dt * 40);
+  for (const q of fx.parts) { q.life += dt; q.vy += q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.97; }
+  if (fx.parts.length) fx.parts = fx.parts.filter(q => q.life < q.max);
+  for (const q of fx.trail) q.a -= dt * 2.6; if (fx.trail.length) fx.trail = fx.trail.filter(q => q.a > 0);
+  const p = state.p, r = ROOMS[state.room];
+  musicStep(dt, r.mood, state.fight);
+
+  if (state.mode === 'wake') { // acordar: encolhida, depois de pé. Qualquer tecla apressa.
+    state.modeT += dt; p.t += dt; p.vy += 1800 * dt; p.vx = 0; moveBody(p, dt, false);
+    const dur = state.first ? 3.6 : 2.2;
+    if (state.modeT >= dur || (state.modeT > 0.6 && (hit.size > 0))) { state.mode = 'play'; state.first = false; }
+  } else if (state.mode === 'dying') { state.modeT += dt; if (state.modeT >= 0.9) { state.mode = 'vortex'; state.modeT = 0; } }
+  else if (state.mode === 'vortex') {
+    state.modeT += dt; const dur = state.killLine ? 5.2 : 3.2;
+    if (state.modeT >= dur || (state.modeT > 1.4 && (tapped('jump') || tapped('attack') || pressed('Enter')))) { state.mode = 'black'; state.modeT = 0; }
+  } else if (state.mode === 'black') { state.modeT += dt; if (state.modeT >= 0.6) respawn(); }
+  else if (state.mode === 'pose') { // o momento do movimento novo
+    state.modeT += dt; p.t += dt; p.vy += 1800 * dt; moveBody(p, dt, false);
+    if (state.modeT >= 3.4) { state.mode = 'play'; banner('Ímpeto de Cinza', touchUI ? 'o botão das duas setas atravessa o ar' : 'C atravessa o ar, uma vez por pulo', 5); }
+  } else if (state.mode === 'ending') {
+    state.modeT += dt; p.t += dt;
+    if (state.modeT >= 4.2) { state.won = true; state.gained = 'Você acordou.'; state.score = state.brasas; wipeSave(); scene = 'results'; events.push({ type: 'fim' }); }
+  } else {
+    if (state.hitstop > 0) { state.hitstop -= dt; return; }
+    state.time += dt;
+    updatePlayer(dt);
+    for (const e of state.ents) if (e.alive) { e.t += dt; e.at += dt; if (e.flash > 0) e.flash -= dt; UPD[e.k](e, dt); if (state.mode !== 'play') break; }
+    if (state.ents.some(e => !e.alive)) state.ents = state.ents.filter(e => e.alive);
+    if (state.mode === 'play') { updateShots(dt); worldThings(); }
+  }
+  // câmera: antecipa para onde você olha, para nas bordas da sala
+  const tx = clamp(p.x + p.w / 2 - W / 2 + p.face * 90, 0, r.w * T - W), ty = clamp(p.y + p.h / 2 - H * 0.58, 0, r.h * T - H);
+  state.cam.x = lerp(state.cam.x, tx, Math.min(1, dt * 3.2)); state.cam.y = lerp(state.cam.y, ty, Math.min(1, dt * 5));
+}
+
+// ================= Desenhar =================
+function drawEnt(e) {
+  const o = { face: e.face, t: e.at, st: e.st, p: 0, rise: e.rise, flash: e.flash > 0 }, cx = e.x + e.w / 2, by = e.y + e.h;
+  if (e.k === 'carcaca') { o.p = e.st === 'windup' ? e.t / tune.carcaca_windup : e.st === 'slam' ? e.t / 0.3 : e.st === 'recover' ? e.t / tune.carcaca_recover : 0; drawCarcaca(ctx, cx, by, o); }
+  else if (e.k === 'mariposa') { o.st = e.st === 'tele' ? 'tele' : e.st; o.tilt = e.tilt || 0; drawMariposa(ctx, cx, e.y + e.h / 2, o); }
+  else if (e.k === 'espinheiro') { o.p = e.st === 'bristle' ? e.t / tune.espinheiro_bristle : e.st === 'fire' ? e.t / 0.45 : 0; drawEspinheiro(ctx, cx, by, o); }
+  else if (e.k === 'vigia') {
+    const k = (d) => clamp(e.t / d, 0, 1);
+    if (e.st === 'roar') { o.head = -0.5; o.arm = -0.9 - Math.sin(e.t * 30) * 0.05; o.arm2 = 1.2; o.st = 'tele'; }
+    else if (e.st === 'tele') { o.tilt = 0.55 * ease(k(tune.vigia_telegraph)); o.head = 0.3; o.arm = 1.1; o.arm2 = 1.2; }
+    else if (e.st === 'charge') { o.tilt = 0.6; o.head = 0.3; o.arm = 1.3; o.arm2 = 1.4; }
+    else if (e.st === 'stun') { o.tilt = -0.12 + Math.sin(e.t * 9) * 0.05; o.head = 0.6 + Math.sin(e.t * 7) * 0.2; o.arm = 0.1; }
+    else if (e.st === 'crouch') { o.crouch = ease(k(0.5)); o.arm = -0.6; }
+    else if (e.st === 'leap') { o.arm = -2.3; o.arm2 = -2; o.tilt = 0.15; }
+    else if (e.st === 'swipeup') { o.arm = lerp(0.35, -2.7, ease(k(0.45))); o.tilt = -0.15; }
+    else if (e.st === 'swipe') { o.arm = lerp(-2.7, 1.3, Math.min(1, k(0.3) * 2.5)); o.tilt = 0.35; }
+    else if (e.st === 'rest') { o.tilt = 0.2 + Math.sin(e.t * 5) * 0.03; o.head = 0.4; }
+    else if (e.st === 'dying') { o.tilt = -0.3; o.head = -0.6; ctx.globalAlpha = clamp(1 - (e.t - 1.2) / 1.4, 0, 1); }
+    drawVigia(ctx, cx, by, o); ctx.globalAlpha = 1;
+  } else if (e.k === 'enlutada') {
+    o.alpha = e.alpha; o.tilt = e.tilt || 0;
+    o.arms = e.st === 'rain' || e.st === 'wisps' || e.st === 'roar' ? Math.min(1, e.t * 2.5) : 0;
+    if (e.st === 'tired') o.tilt = 0.12 + Math.sin(e.t * 4) * 0.03;
+    drawEnlutada(ctx, cx, by, o);
+  }
+}
+function drawDynTiles(r, cx, cy) { // blocos que mudam: parede rachada, treliça, portão
+  const x0 = Math.max(0, Math.floor(cx / T)), x1 = Math.min(r.w - 1, Math.floor((cx + W) / T)), y0 = Math.max(0, Math.floor(cy / T)), y1 = Math.min(r.h - 1, Math.floor((cy + H) / T));
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const c = r.g[y * r.w + x], px = x * T, py = y * T;
+    if (c === 4 && !state.flags.quebrada) {
+      ctx.fillStyle = '#0d1518'; ctx.fillRect(px, py, T, T);
+      ctx.strokeStyle = rgba(PAL.ash, 0.5); ctx.lineWidth = 1.4; ctx.beginPath(); // rachaduras claras: uma parede que parece errada
+      ctx.moveTo(px + 6, py); ctx.lineTo(px + 15, py + 13); ctx.lineTo(px + 9, py + 27); ctx.lineTo(px + 19, py + 40); ctx.moveTo(px + 15, py + 13); ctx.lineTo(px + 30, py + 19); ctx.lineTo(px + 36, py + 34); ctx.stroke();
+      if (x === 54) { ctx.strokeStyle = rgba(PAL.rim, 0.3); ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + T); ctx.stroke(); }
+    } else if (c === 5 && !state.flags.atalho) {
+      ctx.fillStyle = PAL.ink; ctx.strokeStyle = PAL.ink2; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.fillRect(px, py + 2, T, 9);
+      ctx.beginPath(); ctx.moveTo(px + 4, py + 2); ctx.quadraticCurveTo(px + 16, py + 16, px + 36, py + 4); ctx.moveTo(px + 2, py + 12); ctx.quadraticCurveTo(px + 22, py - 2, px + 38, py + 12); ctx.stroke();
+      ctx.strokeStyle = rgba(PAL.ash, 0.4); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(px, py + 2); ctx.lineTo(px + T, py + 2); ctx.stroke();
+    } else if (c === 6 && state.fight) {
+      ctx.fillStyle = PAL.ink; ctx.fillRect(px + 8, py, 24, T);
+      ctx.strokeStyle = rgba(PAL.violet, 0.7); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px + 14, py); ctx.lineTo(px + 22, py + 20); ctx.lineTo(px + 15, py + 40); ctx.stroke();
+      glow(ctx, px + 20, py + 20, 34, PAL.violet, 0.3);
+    }
+  }
+}
+function drawWorld() {
+  const r = ROOMS[state.room], m = MOODS[r.mood], p = state.p, t = state.t;
+  if (fx.artRoom !== state.room) { fx.art = buildRoomArt(r); fx.artRoom = state.room; }
+  const art = fx.art, cx = Math.round(state.cam.x + (fx.shake > 0 ? (vr() - 0.5) * fx.shake : 0)), cy = Math.round(state.cam.y + (fx.shake > 0 ? (vr() - 0.5) * fx.shake : 0));
+  const camx = clamp(state.cam.x, 0, r.w * T - W), camy = clamp(state.cam.y, 0, r.h * T - H);
+  ctx.drawImage(art.sky, 0, 0);
+  for (const L of art.layers) ctx.drawImage(L.c, -Math.round(camx * L.par), -Math.round(camy * L.par));
+  if (art.heart) glow(ctx, art.heart.x - camx * 0.3, art.heart.y - camy * 0.3, 300 + Math.sin(t * 1.3) * 20, PAL.violet, state.flags.enlutada ? 0.12 : 0.34 + 0.1 * Math.sin(t * 1.3));
+  if (art.shafts) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.34 + 0.08 * Math.sin(t * 0.7); ctx.drawImage(art.shafts, -((camx * 0.2) % 200), 0, W + 200, H); ctx.restore(); }
+  drawAsh(ctx, t, camx, camy, false, r.mood); drawFog(ctx, t, camx, r.mood, 0.16);
+
+  ctx.save(); ctx.translate(-cx, -cy);
+  ctx.drawImage(art.back, 0, 0);
+  for (const gl of art.glows) if (gl.x > cx - 80 && gl.x < cx + W + 80 && gl.y > cy - 80 && gl.y < cy + H + 80) glow(ctx, gl.x, gl.y, gl.r, gl.c, gl.a * (0.65 + 0.35 * Math.sin(t * 1.6 + gl.ph)));
+  if (r.beacon && !state.seen.R6) { const bx = r.beacon.x * T + 20, by = r.beacon.y * T; glow(ctx, bx, by - 40, 260, PAL.sproutDeep, 0.5 + 0.12 * Math.sin(t * 1.4)); glow(ctx, bx, by - 30, 90, PAL.sprout, 0.5); for (let i = 0; i < 5; i++) drawBroto(ctx, bx - 40 + i * 20, by, true, t + i * 1.3); }
+  for (const b of r.brotos) drawBroto(ctx, b.x * T + 20, b.y * T, !!state.lit[b.id], t);
+  if (state.room === 'R8') drawGreatSprout(ctx, 22 * T, 14 * T, state.endGrow, t);
+  ctx.drawImage(art.terrain, 0, 0);
+  drawDynTiles(r, cx, cy);
+  for (const it of roomItems()) drawItem(ctx, it.x * T + 20, it.y * T, it.id, t);
+  for (const s of state.shots) if (s.k === 'pillar') drawShot(ctx, s, t);
+  if (state.room === 'R8') { const e = state.ents.find(q => q.k === 'enlutada' && q.st === 'swoop'); if (e && e.t < 0.3 + tune.enlutada_swoop_warn + 0.4) { const k = clamp(e.t / (0.3 + tune.enlutada_swoop_warn), 0, 1); glow(ctx, e.tx, 14 * T - 6, 60 + k * 60, PAL.violet, 0.3 + 0.6 * k); ctx.fillStyle = rgba(PAL.violetPale, 0.3 + 0.6 * k); ctx.fillRect(e.tx - 70 * k, 14 * T - 3, 140 * k, 3); } }
+  for (const e of state.ents) if (e.alive) drawEnt(e);
+  for (const s of state.shots) if (s.k !== 'pillar') drawShot(ctx, s, t);
+  // a figura
+  const pcx = p.x + p.w / 2, pfy = p.y + p.h;
+  for (const q of fx.trail) { ctx.globalAlpha = q.a * 0.5; drawPlayer(ctx, q.x, q.y, { face: q.face, t: 0, vx: 600, vy: 0, ground: false, atk: -1, dash: true, emberA: 0 }); } ctx.globalAlpha = 1;
+  const wakeDur = state.first ? 3.6 : 2.2, curl = state.mode === 'wake' ? clamp(1 - (state.modeT - wakeDur * 0.45) / (wakeDur * 0.4), 0, 1) : state.mode === 'dying' ? clamp(state.modeT / 0.5, 0, 1) : 0;
+  const blink = p.inv > 0 && state.mode === 'play' && Math.floor(p.inv * 14) % 2 === 0;
+  if (!blink && state.mode !== 'vortex' && state.mode !== 'black') {
+    drawPlayer(ctx, pcx, pfy, { face: p.face, t: p.t, vx: p.vx, vy: p.vy, ground: p.ground, atk: p.atk, dash: p.dashT > 0, heal: p.heal, hurt: p.inv > tune.hurt_invuln - 0.15, curl, strong: state.flags.lamina });
+    if (state.mode === 'pose') { const k = clamp(state.modeT / 3, 0, 1); glow(ctx, pcx, pfy - 24, 60 + 200 * k, PAL.violetPale, 0.5 * (1 - k * 0.6)); for (let i = 0; i < 6; i++) { const a = t * 2 + i * TAU / 6; glow(ctx, pcx + Math.cos(a) * (90 - 70 * k), pfy - 24 + Math.sin(a) * (90 - 70 * k), 9, PAL.violetPale, 0.9); } }
+    if (p.heal > 0) { const k = p.heal / tune.heal_time; glow(ctx, pcx, pfy - 20, 70 - 40 * k, PAL.sprout, 0.25 + 0.5 * k); ctx.strokeStyle = rgba(PAL.sprout, 0.8); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(pcx, pfy - 20, 30, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke(); }
+    if (p.atk >= 0) drawSlash(ctx, pcx + (p.atkUp ? 0 : p.face * 6), pfy - 22 - (p.atkUp ? 12 : 0), p.face, clamp(p.atk / 0.22, 0, 1), p.atkUp, state.flags.lamina);
+  }
+  for (const q of fx.parts) { const k = 1 - q.life / q.max; if (q.add) glow(ctx, q.x, q.y, q.s * 2.6, q.col, k); else { ctx.globalAlpha = k * 0.8; ctx.fillStyle = q.col; ctx.beginPath(); ctx.ellipse(q.x, q.y, q.s, q.s * 0.7, q.life * 6, 0, TAU); ctx.fill(); } } ctx.globalAlpha = 1;
+  if (art.canopy) { const inside = pcx > r.canopy.x0 * T - 20 && pcx < (r.canopy.x1 + 1) * T + 20 && pfy < 9.6 * T; fx.canopyA = lerp(fx.canopyA === undefined ? 1 : fx.canopyA, inside ? 0.3 : 1, 0.08); ctx.globalAlpha = fx.canopyA; ctx.drawImage(art.canopy.c, art.canopy.x, art.canopy.y); ctx.globalAlpha = 1; }
+  if (fx.say && fx.say.e.alive) { // a frase de quem lembra de você
+    const e = fx.say.e, s = fx.say, shown = s.text.slice(0, Math.floor(s.t * 34)), a = clamp(s.t * 4, 0, 1) * clamp((s.dur - s.t) * 2, 0, 1);
+    const lines = wrapLines(ctx, shown, 24, 440), bx = clamp(e.x + e.w / 2, cx + 240, cx + W - 240), by = Math.max(cy + 70, e.y - 26 - lines.length * 30);
+    lines.forEach((ln, i) => textGlow(ctx, ln, bx, by + i * 30, 24, '#f1e8ff', PAL.violet, a, 'center', true));
+  }
+  ctx.restore();
+
+  drawAsh(ctx, t, camx, camy, true, r.mood);
+  if (m.ember) drawEmbers(ctx, t, camx, camy, r.mood === 'limiar' || r.mood === 'heart' ? PAL.violet : PAL.emberHot);
+  if (art.fore) ctx.drawImage(art.fore.c, -Math.round(camx * art.fore.par), 0);
+  // escuridão com um vão de luz em volta da figura
+  const sx = p.x + p.w / 2 - cx, sy = p.y + p.h / 2 - cy, dg = ctx.createRadialGradient(sx, sy, 90, sx, sy, 620);
+  dg.addColorStop(0, 'rgba(2,6,9,0)'); dg.addColorStop(1, `rgba(2,6,9,${m.dark + 0.18})`); ctx.fillStyle = dg; ctx.fillRect(0, 0, W, H);
+  glow(ctx, sx, sy, 190, '#ffd9a8', 0.13);
+  if (state.fight) glow(ctx, W / 2, H / 2, 900, PAL.violetDeep, 0.1 + 0.04 * Math.sin(t * 3));
+  drawVignette(ctx);
+}
+function drawHUD() {
+  const p = state.p; ctx.save();
+  for (let i = 0; i < p.maxLife; i++) { // vida: brasas
+    const x = 44 + i * 30, y = 46, on = i < p.life;
+    if (on) glow(ctx, x, y, 20, PAL.ember, 0.6 + 0.15 * Math.sin(state.t * 5 + i));
+    ctx.beginPath(); ctx.moveTo(x, y - 13); ctx.quadraticCurveTo(x + 10, y - 1, x + 6.5, y + 8); ctx.quadraticCurveTo(x, y + 13, x - 6.5, y + 8); ctx.quadraticCurveTo(x - 10, y - 1, x, y - 13); ctx.closePath();
+    if (on) { ctx.fillStyle = PAL.ember; ctx.fill(); ctx.fillStyle = '#fff1d0'; ctx.beginPath(); ctx.ellipse(x, y + 3, 2.6, 5, 0, 0, TAU); ctx.fill(); }
+    else { ctx.strokeStyle = 'rgba(190,205,200,0.6)'; ctx.lineWidth = 1.6; ctx.stroke(); }
+  }
+  for (let i = 0; i < tune.calor_max; i++) { // calor: tracinhos; cada três pagam uma cura
+    const x = 36 + i * 11 + Math.floor(i / tune.heal_cost) * 6, on = i < state.calor;
+    ctx.fillStyle = on ? PAL.sprout : 'rgba(190,205,200,0.3)'; ctx.fillRect(x, 70, 8, on ? 5 : 3);
+  }
+  const bx = 56 + p.maxLife * 30; // brasas colhidas
+  ctx.fillStyle = PAL.emberHot; ctx.beginPath(); ctx.moveTo(bx, 38); ctx.lineTo(bx + 7, 46); ctx.lineTo(bx, 54); ctx.lineTo(bx - 7, 46); ctx.closePath(); ctx.fill();
+  text(String(state.brasas), bx + 16, 47, 22, '#e6efe9', 'left');
+  ctx.restore();
+  if (state.banner) { const b = state.banner, a = clamp(b.t * 2, 0, 1) * clamp((b.dur - b.t) * 1.5, 0, 1);
+    textGlow(ctx, b.title, W / 2, H * 0.74, 40, '#f4efe2', '#000', a); if (b.sub) textGlow(ctx, b.sub, W / 2, H * 0.74 + 42, 22, '#d6e2de', '#000', a); }
+}
+function drawMap(ox, oy, u, v) { // o mapa se preenche sala a sala; marca a trava que você viu
+  for (const id of Object.keys(ROOMS)) {
+    if (!state.seen[id]) continue;
+    const r = ROOMS[id], x = ox + r.map.x * u, y = oy + r.map.y * v, w = r.map.w * u - 8, h = r.map.h * v - 8, here = id === state.room;
+    ctx.fillStyle = here ? 'rgba(143,196,189,0.3)' : 'rgba(143,196,189,0.12)'; ctx.strokeStyle = here ? PAL.rim : 'rgba(143,196,189,0.5)'; ctx.lineWidth = here ? 2.4 : 1.4;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 8) : ctx.rect(x, y, w, h); ctx.fill(); ctx.stroke();
+    text(r.name, x + w / 2, y + h / 2, 16, here ? '#f0f5f2' : '#c2d2cd');
+    for (const b of r.brotos) if (state.lit[b.id]) { ctx.fillStyle = PAL.sprout; ctx.beginPath(); ctx.arc(x + (b.x / r.w) * w, y + h - 9, 4, 0, TAU); ctx.fill(); }
+    if (id === 'R2' && state.flags.ravina && !state.seen.R6) { const lx = x + (r.lock.x / r.w) * w, ly = y + h - 12; ctx.strokeStyle = PAL.violet; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(lx - 6, ly - 6); ctx.lineTo(lx + 6, ly + 6); ctx.moveTo(lx + 6, ly - 6); ctx.lineTo(lx - 6, ly + 6); ctx.stroke(); }
+    if (here) { const p = state.p; ctx.fillStyle = PAL.ember; ctx.beginPath(); ctx.arc(x + clamp((p.x / (r.w * T)), 0.05, 0.95) * w, y + 10 + clamp(p.y / (r.h * T), 0, 1) * (h - 24), 4.5, 0, TAU); ctx.fill(); }
+  }
+}
+function drawTitleBack() {
+  fx.titleT += 1 / 60; const r = ROOMS.R7; if (!fx.titleArt) fx.titleArt = buildRoomArt(r);
+  const a = fx.titleArt, cx = 20 + Math.sin(fx.titleT * 0.05) * 20;
+  ctx.drawImage(a.sky, 0, 0); for (const L of a.layers) ctx.drawImage(L.c, -Math.round(cx * L.par), 0);
+  drawAsh(ctx, fx.titleT, cx, 0, false, 'limiar'); drawFog(ctx, fx.titleT, cx, 'limiar', 0.2);
+  ctx.drawImage(a.back, -cx, 0); ctx.drawImage(a.terrain, -cx, 0);
+  drawBroto(ctx, 14 * T + 20 - cx, 14 * T, true, fx.titleT);
+  drawPlayer(ctx, 470 - cx, 14 * T, { face: 1, t: fx.titleT, vx: 0, vy: 0, ground: true, atk: -1 });
+  drawAsh(ctx, fx.titleT, cx, 0, true, 'limiar'); if (a.fore) ctx.drawImage(a.fore.c, -Math.round(cx * 1.3), 0);
+  ctx.fillStyle = 'rgba(3,5,10,0.5)'; ctx.fillRect(0, 0, W, H); drawVignette(ctx);
+}
+
+// ---- Scenes: title, play, pause, results, figures -----------------------------------------
+// figures: every enemy kind and unit side by side, for the outline check (?scene=figures).
+// The checks look for play by name.
+const scenes = {
+  figures: {
+    update(dt) { state.t += dt; },
+    draw() {
+      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0e2a31'); g.addColorStop(1, '#1f575b'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = PAL.ink; ctx.fillRect(0, 470, W, H - 470); ctx.strokeStyle = rgba(PAL.ash, 0.5); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(0, 470); ctx.lineTo(W, 470); ctx.stroke();
+      const t = state.t, y = 470;
+      drawPlayer(ctx, 110, y, { face: 1, t, vx: 0, vy: 0, ground: true, atk: -1 }); text('A figura', 110, 520, 22, '#e6efe9');
+      drawBroto(ctx, 250, y, true, t); text('Broto', 250, 520, 22, '#e6efe9');
+      drawCarcaca(ctx, 410, y, { face: 1, t, st: 'walk', p: 0, rise: 1 }); text('Carcaça', 410, 520, 22, '#e6efe9');
+      drawMariposa(ctx, 580, y - 90, { face: 1, t, st: 'hover' }); text('Mariposa de Fuligem', 580, 520, 22, '#e6efe9');
+      drawEspinheiro(ctx, 760, y, { face: 1, t, st: 'walk', p: 0 }); text('Espinheiro', 760, 520, 22, '#e6efe9');
+      drawVigia(ctx, 950, y, { face: 1, t, st: 'idle' }); text('O Vigia Oco', 950, 520, 22, '#e6efe9');
+      drawEnlutada(ctx, 1150, y - 30, { face: -1, t, st: 'idle', arms: 0 }); text('A Enlutada', 1150, 520, 22, '#e6efe9');
+      text('Sono de Cinza: as figuras', W / 2, 60, 30, '#e6efe9');
+    },
+  },
+  title: {
+    update() {
+      const sv = loadSave();
+      if (pressed('KeyN') && sv) { wipeSave(); reset(); scene = 'play'; sfx('wake'); return; }
+      if (pressed('Enter') || pressed('Space') || pressed('KeyZ')) { if (sv) continueGame(sv); else reset(); scene = 'play'; sfx('wake'); }
+    },
+    draw() {
+      drawTitleBack(); const sv = loadSave();
+      textGlow(ctx, TITLE, W / 2, 170, 92, '#f4efe2', PAL.violet, 1);
+      text('uma floresta queimada · um sono do qual se acorda', W / 2, 242, 22, '#cfdcd8');
+      if (touchUI) { text('Toque nos botões da tela: andar à esquerda; pular, golpear, ímpeto e curar à direita', W / 2, 360, 22, '#dbe6e2'); text('Segure o botão da chama, parado, para curar', W / 2, 396, 22, '#dbe6e2'); }
+      else CONTROLS.forEach((c, i) => text(c, W / 2, 330 + i * 34, 21, '#dbe6e2'));
+      const a = 0.6 + 0.4 * Math.sin(fx.titleT * 3);
+      textGlow(ctx, touchUI ? (sv ? 'Toque para continuar' : 'Toque para começar') : (sv ? 'Enter: continuar de onde acordou' : 'Enter para começar'), W / 2, H - 110, 30, '#ffffff', PAL.sproutDeep, a);
+      if (sv) text(touchUI ? 'Toque aqui embaixo para recomeçar do zero' : 'N: recomeçar do zero', W / 2, H - 56, 20, '#c6d4d0');
+    },
+  },
+  play: {
+    update(dt) {
+      if (tapped('pause') && state.mode === 'play') { scene = 'pause'; fx.confirmNew = 0; return; }
+      playStep(dt);
+    },
+    draw() {
+      if (state.mode === 'vortex' || state.mode === 'black') {
+        if (state.mode === 'vortex' && !fx.snap) { // guarda o último quadro do mundo, para rasgá-lo
+          fx.snap = mk(640, 360); try { fx.snap.getContext('2d').drawImage(canvas, 0, 0, 640, 360); } catch (e) { fx.snap = null; }
+          fx.shards = []; const cols = 8, rows = 5, sw = W / cols, sh = H / rows;
+          for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const x = i * sw + sw / 2 - W / 2, y = j * sh + sh / 2 - H * 0.46; fx.shards.push({ sx: i * sw, sy: j * sh, sw, sh, ang: Math.atan2(y / 0.8, x), dist: Math.hypot(x, y / 0.8), d: vr(), sp: vr() * 2, rot: (vr() - 0.5) * 5 }); }
+        }
+        const p = state.mode === 'black' ? 1 : clamp(state.modeT / 2.6, 0, 1);
+        drawVortex(ctx, p, state.t, fx.snap, fx.shards);
+        if (state.mode === 'vortex') { // a figura caindo no centro
+          const k = clamp(state.modeT / 2.6, 0, 1), s = 1.5 * (1 - k * 0.9), a = state.modeT * 2.4, d = 190 * (1 - k);
+          ctx.save(); ctx.translate(W / 2 + Math.cos(a) * d, H * 0.46 + Math.sin(a) * d * 0.7); ctx.rotate(a * 1.3); ctx.scale(s, s); ctx.globalAlpha = 1 - k * 0.7;
+          drawPlayer(ctx, 0, 20, { face: 1, t: state.t, vx: 0, vy: -200, ground: false, atk: -1, emberA: 1 - k }); ctx.restore();
+          if (state.killLine) { // quem te matou, e o que ele lembra
+            const a2 = clamp((state.modeT - 1.1) / 0.8, 0, 1) * clamp((5.2 - state.modeT) * 2, 0, 1), lines = wrapLines(ctx, '“' + state.killLine + '”', 34, 900);
+            ctx.fillStyle = `rgba(5,3,12,${0.55 * a2})`; ctx.fillRect(0, H - 220, W, 220);
+            lines.forEach((ln, i) => textGlow(ctx, ln, W / 2, H - 150 + i * 42 - (lines.length - 1) * 21, 34, '#f6efff', PAL.violet, a2, 'center', true));
+            textGlow(ctx, `${LINES[state.killer].name} · ${state.killCount}ª vez`, W / 2, H - 62, 21, '#d9c9f5', '#000', a2);
+          }
+        }
+        if (state.mode === 'vortex' && state.modeT < 0.25) { ctx.fillStyle = `rgba(255,255,255,${1 - state.modeT / 0.25})`; ctx.fillRect(0, 0, W, H); }
+        if (state.mode === 'vortex') { const dur = state.killLine ? 5.2 : 3.2, f = clamp((state.modeT - (dur - 0.7)) / 0.7, 0, 1); if (f > 0) { ctx.fillStyle = `rgba(0,0,0,${f})`; ctx.fillRect(0, 0, W, H); } }
+        if (state.mode === 'black') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+        return;
+      }
+      drawWorld();
+      if (state.mode === 'dying') { const k = clamp(state.modeT / 0.9, 0, 1); glow(ctx, W / 2, H / 2, 900, PAL.violet, 0.5 * k); ctx.fillStyle = `rgba(20,8,40,${0.5 * k})`; ctx.fillRect(0, 0, W, H); }
+      if (state.mode === 'wake') { const dur = state.first ? 3.6 : 2.2, k = clamp(1 - state.modeT / (dur * 0.6), 0, 1); if (k > 0) { ctx.fillStyle = `rgba(0,0,0,${k})`; ctx.fillRect(0, 0, W, H); } }
+      else if (state.fade > 0) { ctx.fillStyle = `rgba(0,0,0,${state.fade})`; ctx.fillRect(0, 0, W, H); }
+      if (state.mode === 'ending') { const k = clamp(state.modeT / 4, 0, 1); glow(ctx, W / 2, H / 2, 1100, PAL.sprout, k); ctx.fillStyle = `rgba(235,255,248,${k * k})`; ctx.fillRect(0, 0, W, H); }
+      if (state.p.inv > tune.hurt_invuln - 0.25 && state.mode === 'play') { const k = (state.p.inv - (tune.hurt_invuln - 0.25)) / 0.25; glow(ctx, W / 2, H / 2, 1000, '#ff3a5a', 0.16 * k); }
+      if (state.mode !== 'wake' || !state.first) drawHUD();
+    },
+  },
+  pause: {
+    update() {
+      if (fx.confirmNew > 0) fx.confirmNew -= STEP;
+      if (tapped('pause')) { scene = 'play'; return; }
+      if (pressed('KeyN')) { if (fx.confirmNew > 0) { wipeSave(); reset(); scene = 'play'; } else fx.confirmNew = 3; }
+    },
+    draw() {
+      drawWorld(); ctx.fillStyle = 'rgba(3,6,9,0.78)'; ctx.fillRect(0, 0, W, H);
+      textGlow(ctx, 'Pausa', W / 2, 80, 46, '#f4efe2', '#000', 1);
+      drawMap(W / 2 - 7 * 78, 150, 156, 96);
+      const y0 = 400; if (!touchUI) CONTROLS.forEach((c, i) => text(c, W / 2, y0 + i * 30, 19, '#d3dfdb'));
+      text(`Mortes: ${state.totalDeaths} · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2`, W / 2, H - 96, 21, '#e6efe9');
+      text(touchUI ? 'Toque no botão de pausa para voltar' : (fx.confirmNew > 0 ? 'Aperte N de novo para apagar tudo e recomeçar' : 'P: voltar · N: recomeçar do zero'), W / 2, H - 56, 20, fx.confirmNew > 0 ? '#ffb9c6' : '#c6d4d0');
+    },
+  },
+  results: {
+    update() { if (pressed('Enter') || pressed('Space')) { reset(); scene = 'title'; } },
+    draw() {
+      drawTitleBack(); ctx.fillStyle = 'rgba(210,255,240,0.1)'; ctx.fillRect(0, 0, W, H);
+      textGlow(ctx, state.gained || 'Você acordou.', W / 2, 210, 78, '#f6fff9', PAL.sproutDeep, 1);
+      const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
+      text(`Você morreu ${state.totalDeaths} ${state.totalDeaths === 1 ? 'vez' : 'vezes'} e acordou todas elas.`, W / 2, 320, 26, '#e6efe9');
+      text(`Tempo desperta: ${m} min ${s < 10 ? '0' : ''}${s} s · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2`, W / 2, 364, 22, '#d3dfdb');
+      text('Esta é uma fatia: a floresta continua depois daqui.', W / 2, 420, 21, '#d3dfdb');
+      text(touchUI ? 'Toque para voltar ao início' : 'Enter para voltar ao início', W / 2, H - 90, 26, '#ffffff');
+    },
+  },
+};
+
+// ---- Loop: fixed step, frame time clamped ---------------------------------------------
+function step() {
+  if (pressed('KeyM')) { setMuted(!muted); hit.delete('KeyM'); }
+  scenes[scene].update(STEP); hit.clear();
+}
+let last, acc = 0, ALPHA = 1; // ALPHA: how far the frame is between the last two steps
+function tick() {
+  const now = clock.now();
+  acc += Math.min(now - last, 0.25); last = now; // a stall never fast-forwards the game
+  while (acc >= STEP) { step(); acc -= STEP; }
+  ALPHA = acc / STEP; // draw between steps, so the view never judders
+  drawFrame();
+}
+function drawFrame() { scenes[scene].draw(); }
+function frame() { tick(); requestAnimationFrame(frame); }
+// A headless browser on a time budget runs timers but almost no animation frames: a timer
+// ticks when no frame has come for 100 ms on a visible page; a hidden tab stays paused.
+function timer() { if (document.visibilityState === 'visible' && clock.now() - last > 0.1) tick(); }
+
+// ---- What a check can read and drive (?manual=1 stops the loop; players never see it) ----
+window.game = {
+  get scene() { return scene; },
+  get state() { return state; },
+  press(code) { hit.add(code); },
+  hold(code, on) { on ? down.add(code) : down.delete(code); },
+  get events() { return events; }, // the loop steps; a check empties it
+  step(n = 1, draw = true, alpha = 1) {
+    for (let i = 0; i < n; i++) step();
+    if (draw) { ALPHA = alpha; drawFrame(); }
+  },
+};
+
+reset();
+scene = params.get('scene') || 'title';
+last = clock.now();
+if (params.get('manual') === '1') drawFrame();
+else { requestAnimationFrame(frame); setInterval(timer, 50); }
+</script>
+</body>
+</html>
