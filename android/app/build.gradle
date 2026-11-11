@@ -7,7 +7,7 @@ plugins {
 def webOut = layout.buildDirectory.dir('web-assets')
 tasks.register('copyWeb', Copy) {
     from(rootProject.file('..')) {
-        include 'index.html', 'config.js', 'world.js', 'art.js', 'sfx.js'
+        include 'index.html', 'config.js', 'world.js', 'art.js', 'sfx.js', 'director.js'
     }
     into webOut
 }

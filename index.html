@@ -60,6 +60,7 @@
 <script src="world.js"></script>
 <script src="art.js"></script>
 <script src="sfx.js"></script>
+<script src="director.js"></script>
 <script>
 'use strict';
 // Sono de Cinza. A partir do starter do one-shot: o passo fixo, o relógio, window.game e as cenas
@@ -194,14 +195,14 @@ function loadSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ?
 function save() {
   if (params.get('room')) return; // sala escolhida pelo endereço: não mexe no save
   const s = state, o = { flags: s.flags, lit: s.lit, seen: s.seen, ecos: s.ecos, deaths: s.deaths, deathHow: s.deathHow, totalDeaths: s.totalDeaths, brasas: s.brasas, level: s.level,
-    calor: s.calor, maxLife: s.p.maxLife, spawn: s.spawn, time: Math.round(s.time), wallHp: s.wallHp };
+    calor: s.calor, maxLife: s.p.maxLife, spawn: s.spawn, time: Math.round(s.time), wallHp: s.wallHp, dir: dirPack() };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* sem armazenamento: o jogo segue sem save */ }
 }
 function wipeSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nada a apagar */ } }
 
 // ---- O jogo ---------------------------------------------------------------------------
 let scene, state;
-const fx = { parts: [], trail: [], shake: 0, kick: 0, zoom: 1, art: null, artRoom: '', snap: null, shards: [], say: null, eco: null, titleT: 0, confirmNew: 0 };
+const fx = { parts: [], trail: [], shake: 0, kick: 0, zoom: 1, art: null, artRoom: '', snap: null, shards: [], say: null, eco: null, sono: null, dread: 0, titleT: 0, confirmNew: 0 };
 const SPEC = {
   carcaca: { w: 40, h: 70, hp: 'carcaca_life', brasas: 2, kb: 70 },
   mariposa: { w: 30, h: 24, hp: 'mariposa_life', brasas: 1, kb: 260 },
@@ -234,6 +235,7 @@ function enterRoom(id, x, y) {
   const VW = W / fx.zoom, VH = H / fx.zoom;
   state.cam.x = clamp(p.x + p.w / 2 - VW / 2, 0, r.w * T - VW); state.cam.y = clamp(p.y + p.h / 2 - VH * 0.58, 0, r.h * T - VH);
   state.fade = 1; fx.parts.length = 0; fx.trail.length = 0; fx.say = null; fx.kick = 0;
+  dirEnter(id); // o Sono olha quem entrou, e talvez mexa em alguma coisa
 }
 function reset() {
   seed = Number(params.get('seed')) || CONFIG.seed;
@@ -242,7 +244,8 @@ function reset() {
   state = { t: 0, time: 0, score: 0, gained: '', mode: 'wake', modeT: 0, room: 'R1', p: newPlayer(px, py), cam: { x: 0, y: 0 },
     flags: { impeto: false, asas: false, lamina: false, fragmento: false, atalho: false, vigia: false, rainha: false, enlutada: false, quebrada: false, ravina: false, muro: false },
     lit: {}, seen: {}, ecos: {}, deaths: {}, deathHow: {}, bye: {}, wind: 0, poseItem: '', totalDeaths: 0, brasas: 0, level: 1, calor: 0, wallHp: 2, spawn: { room: 'R1', x: px, y: py },
-    ents: [], shots: [], dead: {}, greeted: {}, fight: false, hitstop: 0, fade: 1, killer: '', killLine: '', killCount: 0, banner: null, endGrow: 0, won: false, first: true };
+    ents: [], shots: [], dead: {}, greeted: {}, fight: false, hitstop: 0, fade: 1, killer: '', killLine: '', killBy: '', killCount: 0, banner: null, endGrow: 0, won: false, first: true };
+  dirReset(); // o Sono começa sem memória, e o mundo volta a ser como foi feito
   const dbg = params.get('room'); // ?room=R5&impeto=1&lamina=1: começa numa sala, para olhar e testar
   if (dbg && ROOMS[dbg]) {
     if (params.get('impeto')) state.flags.impeto = true;
@@ -261,11 +264,13 @@ function continueGame(sv) {
   state.totalDeaths = sv.totalDeaths || 0; state.brasas = sv.brasas || 0; state.level = sv.level || 1; state.calor = sv.calor || 0; state.time = sv.time || 0;
   state.wallHp = sv.wallHp === undefined ? 2 : sv.wallHp; state.p.maxLife = sv.maxLife || tune.player_life; state.p.life = state.p.maxLife;
   if (sv.spawn && ROOMS[sv.spawn.room]) state.spawn = sv.spawn;
+  dirLoad(sv); // a memória do Sono e o que ele já mudou no mundo
   state.first = false; enterRoom(state.spawn.room, state.spawn.x, state.spawn.y);
 }
 
 // ---- Blocos e colisão -----------------------------------------------------------------
 function tileCode(tx, ty) { const r = ROOMS[state.room]; return tx < 0 || ty < 0 || tx >= r.w || ty >= r.h ? 0 : r.g[ty * r.w + tx]; }
+const isBranch = c => c === 2 || c === 9; // galhos: seguram só por cima (9 é um galho que o Sono fez nascer)
 function tileSolid(tx, ty, enemy) {
   const r = ROOMS[state.room];
   if (tx < 0 || tx >= r.w || ty >= r.h) return !!enemy; // a figura atravessa as bordas onde há saída; os outros ficam
@@ -285,7 +290,7 @@ function moveBody(b, dt, enemy) {
   b.ground = false;
   if (b.vy >= 0) {
     const ty = Math.floor((ny + b.h) / T);
-    for (let tx = x0; tx <= x1; tx++) if (tileSolid(tx, ty, enemy) || (tileCode(tx, ty) === 2 && prevBottom <= ty * T + 0.5)) { ny = ty * T - b.h; b.vy = 0; b.ground = true; break; }
+    for (let tx = x0; tx <= x1; tx++) if (tileSolid(tx, ty, enemy) || (isBranch(tileCode(tx, ty)) && prevBottom <= ty * T + 0.5)) { ny = ty * T - b.h; b.vy = 0; b.ground = true; break; }
   } else {
     const ty = Math.floor(ny / T);
     for (let tx = x0; tx <= x1; tx++) if (tileSolid(tx, ty, enemy)) { ny = (ty + 1) * T + 0.01; b.vy = 0; break; }
@@ -293,7 +298,7 @@ function moveBody(b, dt, enemy) {
   b.y = ny;
 }
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-function groundAhead(e) { const tx = Math.floor((e.face > 0 ? e.x + e.w + 4 : e.x - 4) / T), ty = Math.floor((e.y + e.h + 4) / T); return tileSolid(tx, ty, true) || tileCode(tx, ty) === 2; }
+function groundAhead(e) { const tx = Math.floor((e.face > 0 ? e.x + e.w + 4 : e.x - 4) / T), ty = Math.floor((e.y + e.h + 4) / T); return tileSolid(tx, ty, true) || isBranch(tileCode(tx, ty)); }
 
 // ---- Poeira, cinza e faíscas (só para os olhos) ---------------------------------------
 function puff(x, y, n, col, sp, o = {}) {
@@ -321,7 +326,7 @@ function buzz(ms) { if (tune.vibration) try { if (navigator.vibrate) navigator.v
 // ---- Dano ---------------------------------------------------------------------------------
 function hurt(dmg, key, srcX, how) {
   const p = state.p; if (p.inv > 0 || state.mode !== 'play') return;
-  p.life -= dmg; p.inv = tune.hurt_invuln; p.vx = (p.x + p.w / 2 >= srcX ? 1 : -1) * 330; p.vy = -310; p.dashT = 0; p.heal = 0; p.atk = -1; p.jumping = false;
+  p.life -= dmg; dirAct('hurt'); p.inv = tune.hurt_invuln; p.vx = (p.x + p.w / 2 >= srcX ? 1 : -1) * 330; p.vy = -310; p.dashT = 0; p.heal = 0; p.atk = -1; p.jumping = false;
   fx.shake = 12; state.hitstop = 0.09; sfx('hurt'); buzz(45); puff(p.x + p.w / 2, p.y + p.h / 2, 12, PAL.ember, 220, { add: true, life: 0.5 });
   if (p.life <= 0) die(key, how || 'corpo');
 }
@@ -332,12 +337,14 @@ function die(key, how) {
   const n = countFor(key), hl = LINES[key].how && LINES[key].how[how]; // na 2ª e na 4ª morte do mesmo jeito, ele comenta o jeito
   state.killCount = state.deaths[key];
   state.killLine = n >= 2 ? ((hl && (hn === 2 || hn === 4) ? hl[hn === 2 ? 0 : 1] : null) || lineFor(LINES[key].kill, n) || '') : '';
+  state.killBy = ''; if (!state.killLine) { const sl = dirDeathLine(key); if (sl) { state.killLine = sl; state.killBy = 'sono'; } } // se quem te matou não disse nada, talvez o Sono diga
+  dirDeath(key, how);
   fx.snap = null; fx.say = null; sfx('death'); buzz([70, 50, 150]); events.push({ type: 'morte', por: key, como: how, vezes: state.deaths[key] }); save();
 }
 function respawn() {
   state.dead = {}; state.greeted = {}; state.bye = {}; state.shots = [];
   const p = state.p; p.life = p.maxLife; p.vx = 0; p.vy = 0; p.inv = 0; p.atk = -1; p.dashT = 0; p.heal = 0; p.face = 1;
-  enterRoom(state.spawn.room, state.spawn.x, state.spawn.y);
+  DIRCTX = { how: 'wake' }; enterRoom(state.spawn.room, state.spawn.x, state.spawn.y);
   state.mode = 'wake'; state.modeT = 0; sfx('wake');
 }
 function addBrasas(n) {
@@ -359,7 +366,7 @@ function damageEnt(e, dmg, dir) {
 }
 function killEnt(e) {
   const s = SPEC[e.k], cx = e.x + e.w / 2, cy = e.y + e.h / 2;
-  sfx('kill'); fx.shake = Math.max(fx.shake, s.boss ? 16 : 6);
+  sfx('kill'); fx.shake = Math.max(fx.shake, s.boss ? 16 : 6); dirKill(e);
   if (s.boss) { e.st = 'dying'; e.t = 0; e.vx = 0; e.vy = 0; state.shots = []; state.ents = state.ents.filter(q => !q.tmp); say(e, LINES[e.k].fall, 5); buzz(120); return; }
   e.alive = false;
   if (!e.tmp) { state.dead[e.id] = true; addBrasas(s.brasas); }
@@ -377,11 +384,11 @@ function updatePlayer(dt) {
   // curar: parado, no chão, exposto
   if (held('down') && !locked && p.ground && ax === 0 && p.atk < 0 && p.dashT <= 0 && state.calor >= tune.heal_cost && p.life < p.maxLife) {
     p.heal += dt;
-    if (p.heal >= tune.heal_time) { p.life++; state.calor -= tune.heal_cost; p.heal = 0; sfx('heal'); puff(p.x + p.w / 2, p.y + p.h / 2, 16, PAL.sprout, 120, { add: true, g: -120, life: 0.9 }); }
+    if (p.heal >= tune.heal_time) { p.life++; state.calor -= tune.heal_cost; p.heal = 0; dirAct('heal'); sfx('heal'); puff(p.x + p.w / 2, p.y + p.h / 2, 16, PAL.sprout, 120, { add: true, g: -120, life: 0.9 }); }
   } else p.heal = 0;
   // ímpeto: um traço reto no ar ou no chão
   if (tapped('dash') && !locked && state.flags.impeto && p.dashCd <= 0 && !p.dashUsed && p.heal === 0) {
-    p.dashT = tune.dash_time; p.dashCd = tune.dash_cooldown; p.dashUsed = !p.ground; p.dashDir = ax || p.face; p.face = p.dashDir; p.vy = 0; p.jumping = false; sfx('dash');
+    p.dashT = tune.dash_time; p.dashCd = tune.dash_cooldown; p.dashUsed = !p.ground; p.dashDir = ax || p.face; p.face = p.dashDir; p.vy = 0; p.jumping = false; dirAct('dash'); sfx('dash');
     puff(p.x + p.w / 2, p.y + p.h / 2, 10, PAL.violetPale, 160, { add: true, life: 0.4, g: 0 });
   }
   if (p.dashT > 0) {
@@ -394,18 +401,18 @@ function updatePlayer(dt) {
     if (ax && p.atk < 0) p.face = ax;
     if (tapped('jump') && !locked) {
       if (!p.ground && p.coy <= 0 && state.flags.asas && !p.jump2 && p.heal === 0) { // asas de cinza: um segundo pulo no ar
-        p.vy = -Math.sqrt(2 * grav * tune.double_jump_height); p.jump2 = true; p.jumping = true; p.buf = 0; sfx('wings');
+        p.vy = -Math.sqrt(2 * grav * tune.double_jump_height); p.jump2 = true; p.jumping = true; p.buf = 0; dirAct('jump2'); sfx('wings');
         puff(p.x + p.w / 2, p.y + p.h, 16, '#cfd8d5', 150, { w: 44, life: 0.6, g: 80 }); puff(p.x + p.w / 2, p.y + p.h, 6, PAL.violetPale, 120, { add: true, life: 0.4, g: 0, w: 40 });
       } else p.buf = tune.jump_buffer;
     }
-    if (p.buf > 0 && p.coy > 0 && p.heal === 0) { p.vy = -v0; p.buf = 0; p.coy = 0; p.jumping = true; sfx('jump'); puff(p.x + p.w / 2, p.y + p.h, 5, '#9fb0ad', 70, { up: true, life: 0.4 }); }
+    if (p.buf > 0 && p.coy > 0 && p.heal === 0) { p.vy = -v0; p.buf = 0; p.coy = 0; p.jumping = true; dirAct('jump'); sfx('jump'); puff(p.x + p.w / 2, p.y + p.h, 5, '#9fb0ad', 70, { up: true, life: 0.4 }); }
     if (p.jumping && !held('jump') && p.vy < 0) { p.vy *= tune.jump_cut; p.jumping = false; }
     if (p.vy >= 0) p.jumping = false;
     p.vy = Math.min(tune.max_fall, p.vy + grav * (p.vy > 0 ? tune.fall_gravity : 1) * dt);
   }
   state.wind = 0;
   // golpe: sai na hora. No ar, com ↓, golpeia para baixo e quica no que acertar.
-  if (tapped('attack') && !locked && p.atkCd <= 0 && p.heal === 0) { p.atk = 0; p.atkCd = tune.attack_cooldown; p.atkDir = held('up') ? 1 : (held('down') && !p.ground ? 2 : 0); p.atkHit = []; sfx('slash'); }
+  if (tapped('attack') && !locked && p.atkCd <= 0 && p.heal === 0) { p.atk = 0; p.atkCd = tune.attack_cooldown; p.atkDir = held('up') ? 1 : (held('down') && !p.ground ? 2 : 0); p.atkHit = []; dirAct(p.atkDir === 1 ? 'up' : p.atkDir === 2 ? 'down' : 'side'); sfx('slash'); }
   if (p.atk >= 0) { p.atk += dt; if (p.atk <= 0.13) attackHits(); if (p.atk > 0.22) p.atk = -1; }
   moveBody(p, dt, false);
   if (p.ground) {
@@ -416,7 +423,7 @@ function updatePlayer(dt) {
     if (tileCode(fx0, fy) === 1 && tileCode(fx1, fy) === 1 && tileCode(fx0 - 1, fy - 1) !== 3 && tileCode(fx1 + 1, fy - 1) !== 3) { p.safeX = p.x; p.safeY = p.y; }
   } else p.coy -= dt;
   // espinhos e fuligem: ferem e te devolvem ao último chão firme
-  const tx0 = Math.floor(p.x / T), tx1 = Math.floor((p.x + p.w - 0.01) / T), tyb = Math.floor((p.y + p.h - 4) / T);
+  const tx0 = Math.floor((p.x + 6) / T), tx1 = Math.floor((p.x + p.w - 6.01) / T), tyb = Math.floor((p.y + p.h - 4) / T); // 6 px de folga de cada lado: roçar a borda não fere
   for (let tx = tx0; tx <= tx1; tx++) {
     const c = tileCode(tx, tyb);
     if ((c === 3 && p.y + p.h > tyb * T + 12 || c === 7 && p.y + p.h > tyb * T + 14) && state.mode === 'play') {
@@ -480,7 +487,7 @@ function updMariposa(e, dt) { // paira, treme, mergulha
     if (e.tmp) e.hx = lerp(e.hx, p.x + p.w / 2, Math.min(1, dt * 0.7)); // filha da Rainha: vem atrás de você, não fica no ninho
     const tx = e.hx + Math.sin(e.at * 0.9 + (e.tmp ? e.hy : e.hx)) * 54, ty = e.hy + Math.sin(e.at * 1.7) * 16;
     e.vx = lerp(e.vx, (tx - ecx) * 1.6, Math.min(1, dt * 4)); e.vy = lerp(e.vy, (ty - ecy) * 1.6, Math.min(1, dt * 4)); e.face = dx >= 0 ? 1 : -1; e.tilt = 0;
-    if (d < 350 && e.cd <= 0) { e.st = 'tele'; e.t = 0; e.n = 0; greet(e); }
+    if (d < (e.far ? 560 : 350) && e.cd <= 0) { e.st = 'tele'; e.t = 0; e.n = 0; greet(e); }
   } else if (e.st === 'tele') {
     e.vx *= 0.85; e.vy *= 0.85;
     if (e.t >= tune.mariposa_telegraph * (e.n ? 0.6 : 1)) { e.st = 'dive'; e.t = 0; e.vx = dx / d * tune.mariposa_dive; e.vy = dy / d * tune.mariposa_dive; e.tilt = Math.atan2(dy, dx) - Math.PI / 2; sfx('thorn'); }
@@ -718,7 +725,7 @@ function worldThings() {
       if (ex.flag && !state.flags[ex.flag]) { state.flags[ex.flag] = true; sfx('gate'); save(); }
       const nx = ex.map ? p.x - ex.a * T + ex.sx * T : ex.sx * T + (T - p.w) / 2, ny = ex.sy * T - p.h - (side === 'bottom' ? 0 : 0.01);
       if (side === 'top') { p.vy = 0; p.vx = 0; }
-      enterRoom(ex.to, nx, ny); events.push({ type: 'sala', id: ex.to });
+      dirLeave(side); enterRoom(ex.to, nx, ny); events.push({ type: 'sala', id: ex.to });
     } else if (side === 'bottom') { p.inv = 0; hurt(1, 'floresta', pcx, 'queda'); if (state.mode === 'play') { p.x = p.safeX; p.y = p.safeY; p.vx = 0; p.vy = 0; p.lock = 0.5; state.fade = 0.7; } }
     else { p.x = clamp(p.x, 0, RW - p.w); if (p.y + p.h < 0) { p.y = -p.h; p.vy = Math.max(0, p.vy); } }
   }
@@ -770,6 +777,7 @@ function playStep(dt) {
     for (const e of state.ents) if (e.alive) { e.t += dt; e.at += dt; if (e.flash > 0) e.flash -= dt; UPD[e.k](e, dt); if (state.mode !== 'play') break; }
     if (state.ents.some(e => !e.alive)) state.ents = state.ents.filter(e => e.alive);
     if (state.mode === 'play') { updateShots(dt); worldThings(); }
+    if (state.mode === 'play') dirStep(dt);
   }
   // câmera: antecipa para onde você olha, para nas bordas da sala
   const VW = W / fx.zoom, VH = H / fx.zoom;
@@ -819,6 +827,7 @@ function drawDynTiles(r, cx, cy) { // blocos que mudam: parede rachada, treliça
       ctx.fillStyle = PAL.ink; ctx.strokeStyle = PAL.ink2; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.fillRect(px, py + 2, T, 9);
       ctx.beginPath(); ctx.moveTo(px + 4, py + 2); ctx.quadraticCurveTo(px + 16, py + 16, px + 36, py + 4); ctx.moveTo(px + 2, py + 12); ctx.quadraticCurveTo(px + 22, py - 2, px + 38, py + 12); ctx.stroke();
       ctx.strokeStyle = rgba(PAL.ash, 0.4); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(px, py + 2); ctx.lineTo(px + T, py + 2); ctx.stroke();
+    } else if (c === 9) { dirDrawBranch(ctx, px, py, state.t, x);
     } else if (c === 6 && state.fight) {
       ctx.fillStyle = PAL.ink; ctx.fillRect(px + 8, py, 24, T);
       ctx.strokeStyle = rgba(PAL.violet, 0.7); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px + 14, py); ctx.lineTo(px + 22, py + 20); ctx.lineTo(px + 15, py + 40); ctx.stroke();
@@ -850,6 +859,7 @@ function drawWorld() {
   ctx.drawImage(art.terrain, 0, 0);
   drawDynTiles(r, cx, cy);
   for (const ec of r.ecos) drawEco(ctx, ec.x * T + 20, ec.y * T, !!state.ecos[ec.id], t);
+  dirDrawWorld(ctx, t);
   for (const it of roomItems()) drawItem(ctx, it.x * T + 20, it.y * T, it.id, t);
   for (const s of state.shots) if (s.k === 'pillar') drawShot(ctx, s, t);
   for (const e of state.ents) { // onde o rasante ou o mergulho vai cair
@@ -895,6 +905,7 @@ function drawWorld() {
   dg.addColorStop(0, 'rgba(2,6,9,0)'); dg.addColorStop(1, `rgba(2,6,9,${m.dark + 0.18})`); ctx.fillStyle = dg; ctx.fillRect(0, 0, W, H);
   glow(ctx, sx, sy, 190, '#ffd9a8', 0.13);
   if (state.fight) glow(ctx, W / 2, H / 2, 900, PAL.violetDeep, 0.1 + 0.04 * Math.sin(t * 3));
+  dirDrawOver(ctx);
   drawVignette(ctx);
 }
 function drawHUD() {
@@ -920,6 +931,7 @@ function drawHUD() {
     const e = fx.eco, a = clamp(e.t * 1.5, 0, 1) * clamp((6.5 - e.t) * 1.2, 0, 1), lines = wrapLines(ctx, e.text.slice(0, Math.floor(e.t * 30)), 28, 820);
     lines.forEach((ln, i) => textGlow(ctx, ln, W / 2, 150 + i * 38, 28, '#eefcf8', PAL.sproutDeep, a, 'center', true));
   }
+  dirDrawHUD(ctx);
 }
 function drawMap(ox, oy, u, v) { // o mapa se preenche sala a sala; marca as travas que você viu
   for (const id of Object.keys(ROOMS)) {
@@ -1007,7 +1019,7 @@ const scenes = {
             const a2 = clamp((state.modeT - 1.1) / 0.8, 0, 1) * clamp((5.2 - state.modeT) * 2, 0, 1), lines = wrapLines(ctx, '“' + state.killLine + '”', 34, 900);
             ctx.fillStyle = `rgba(5,3,12,${0.55 * a2})`; ctx.fillRect(0, H - 220, W, 220);
             lines.forEach((ln, i) => textGlow(ctx, ln, W / 2, H - 150 + i * 42 - (lines.length - 1) * 21, 34, '#f6efff', PAL.violet, a2, 'center', true));
-            textGlow(ctx, `${LINES[state.killer].name} · ${state.killCount}ª vez`, W / 2, H - 62, 21, '#d9c9f5', '#000', a2);
+            textGlow(ctx, state.killBy === 'sono' ? `O Sono · ${state.totalDeaths}ª morte` : `${LINES[state.killer].name} · ${state.killCount}ª vez`, W / 2, H - 62, 21, '#d9c9f5', '#000', a2);
           }
         }
         if (state.mode === 'vortex' && state.modeT < 0.25) { ctx.fillStyle = `rgba(255,255,255,${1 - state.modeT / 0.25})`; ctx.fillRect(0, 0, W, H); }
@@ -1041,7 +1053,8 @@ const scenes = {
         text('O que lembra de você', colR, y0, 22, '#e7dcff');
         reg.slice(0, 6).forEach((k, i) => { const n = state.deaths[k], top = topHow(k); text(`${LINES[k].name} · ${n} ${n === 1 ? 'vez' : 'vezes'}${mem(k) && k !== 'floresta' ? ' · já luta diferente' : ''}`, colR, y0 + 34 + i * 28, 18, mem(k) ? '#d9c2ff' : '#d3dfdb'); });
       }
-      const ecosN = Object.keys(state.ecos).length;
+      const ecosN = Object.keys(state.ecos).length, dn = state.dir.changes;
+      if (dn > 0) text(`O sono mexeu na floresta ${dn} ${dn === 1 ? 'vez' : 'vezes'}`, W / 2, H - 130, 19, '#cdb6f5');
       text(`Mortes: ${state.totalDeaths} · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2 · Ecos: ${ecosN} de 7`, W / 2, H - 96, 21, '#e6efe9');
       text(touchUI ? 'Toque no botão de pausa para voltar' : (fx.confirmNew > 0 ? 'Aperte N de novo para apagar tudo e recomeçar' : 'P: voltar · N: recomeçar do zero'), W / 2, H - 56, 20, fx.confirmNew > 0 ? '#ffb9c6' : '#c6d4d0');
     },
@@ -1054,7 +1067,8 @@ const scenes = {
       const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
       text(`Você morreu ${state.totalDeaths} ${state.totalDeaths === 1 ? 'vez' : 'vezes'} e acordou todas elas.`, W / 2, 320, 26, '#e6efe9');
       text(`Tempo desperta: ${m} min ${s < 10 ? '0' : ''}${s} s · Brasas: ${state.brasas} · Segredos: ${(state.flags.lamina ? 1 : 0) + (state.flags.fragmento ? 1 : 0)} de 2 · Ecos: ${Object.keys(state.ecos).length} de 7`, W / 2, 364, 22, '#d3dfdb');
-      text('Esta é uma fatia: a floresta continua depois daqui.', W / 2, 420, 21, '#d3dfdb');
+      if (state.dir.changes > 0) text(`O sono mexeu na floresta ${state.dir.changes} ${state.dir.changes === 1 ? 'vez' : 'vezes'} enquanto você dormia.`, W / 2, 402, 21, '#cdb6f5');
+      text('Esta é uma fatia: a floresta continua depois daqui.', W / 2, 446, 21, '#d3dfdb');
       text(touchUI ? 'Toque para voltar ao início' : 'Enter para voltar ao início', W / 2, H - 90, 26, '#ffffff');
     },
   },
@@ -1087,6 +1101,7 @@ window.game = {
   press(code) { hit.add(code); },
   hold(code, on) { on ? down.add(code) : down.delete(code); },
   get events() { return events; }, // the loop steps; a check empties it
+  get director() { return DRT; }, // o que o Sono tem na cabeça; DRT.force = 'extra' força o próximo gesto
   step(n = 1, draw = true, alpha = 1) {
     for (let i = 0; i < n; i++) step();
     if (draw) { ALPHA = alpha; drawFrame(); }

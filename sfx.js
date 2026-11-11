@@ -90,6 +90,7 @@ function sfx(name) {
     case 'wings': sNoise(0.3, 0.16, 'bandpass', 900, 300, 0.8); sTone(520, 0.25, 'sine', 0.05, 780); break;
     case 'eco': pluck(659.25, 0.1, 4); pluck(987.77, 0.06, 4.6); break;
     case 'rage': { const g = sTone(64, 1.5, 'sawtooth', 0.22, 40, SND.bus, 0.1); if (g) g.connect(SND.rev); sTone(311, 1.5, 'sine', 0.1, 233, SND.rev, 0.2); sNoise(1.3, 0.22, 'bandpass', 300, 110, 1.2, SND.bus, 0.15); break; }
+    case 'sono': { sNoise(1.7, 0.07, 'bandpass', 720, 300, 2.4, SND.rev, 0.5); const g = sTone(92.5, 1.9, 'sine', 0.07, 78, SND.bus, 0.5); if (g) g.connect(SND.rev); sTone(138.6, 1.7, 'sine', 0.03, 131, SND.rev, 0.6); break; } // o Sono: um sopro e um tom baixo
     case 'end': pluck(146.83, 0.2, 6); pluck(220, 0.16, 6); pluck(293.66, 0.14, 6); pluck(369.99, 0.12, 6); pluck(440, 0.1, 7); break;
   }
 }

@@ -90,6 +90,16 @@ window.CONFIG = {
   rainha_dart: { value: 430, min: 200, max: 800, step: 10 },        // px/s dos dardos
   rainha_wind: { value: 110, min: 0, max: 260, step: 10 },          // px/s que o vento das asas te empurra
 
+  // ---- O Sono: o diretor que acompanha você e mexe no mundo (director.js) ----
+  director: { value: 1, min: 0, max: 1, step: 1 },                       // 1 ligado, 0 desligado
+  director_gesture_chance: { value: 0.5, min: 0, max: 1, step: 0.05 },   // chance de ele mexer em algo ao trocar de sala (cresce quando você vai bem)
+  director_quiet_rooms: { value: 1, min: 0, max: 6, step: 1 },           // salas de sossego, no mínimo, entre um gesto e outro
+  director_max_extra: { value: 2, min: 0, max: 4, step: 1 },             // inimigos a mais, no máximo, numa sala
+  director_stalk_chance: { value: 0.45, min: 0, max: 1, step: 0.05 },    // chance de vir atrás de você quem você deixou vivo e desperto
+  director_mercy_deaths: { value: 3, min: 2, max: 8, step: 1 },          // mortes seguidas na mesma sala para ele ceder alguma coisa
+  director_whisper_gap: { value: 32, min: 8, max: 180, step: 2 },        // s, em média, entre um sussurro e outro
+  director_idle_time: { value: 7, min: 3, max: 30, step: 1 },            // s parada para ele comentar
+
   // ---- Celular ----
   mobile_zoom: { value: 1.3, min: 1, max: 1.8, step: 0.05 },        // aproximação da câmera no toque (a figura fica maior)
   mobile_zoom_fight: { value: 1.05, min: 1, max: 1.5, step: 0.05 }, // nas lutas de guardião a câmera abre

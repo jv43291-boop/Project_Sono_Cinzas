@@ -58,6 +58,27 @@ para instalar e atualizar o protótipo, não para publicar em loja.
 
 ![A Rainha de Fuligem mergulhando no ninho](docs/screenshots/rainha.jpg)
 
+## O Sono
+
+Depois da primeira morte, alguma coisa passa a acompanhar você. O Sono é um diretor que roda dentro
+do jogo, sem modelo de IA e sem internet (`director.js`). Ele anota onde você morre, por onde passa,
+quanto demora e que golpe usa mais, e a partir disso:
+
+- ao trocar de sala, às vezes mexe nos inimigos: põe um a mais onde não havia, manda mais do que mais
+  te matou, troca os do chão de tipo, acorda todos antes de você chegar, ou esvazia a sala e cobra na
+  próxima. Quem você deixa vivo e desperto pode atravessar a porta atrás de você;
+- entre uma morte e outra, às vezes mexe no chão: espinhos nascem e somem, os troncos do lago mudam
+  de lugar, o atalho fecha e uma ponte abre sobre a ravina;
+- depois de três mortes seguidas na mesma sala, cede alguma coisa;
+- onde você morreu fica um resto de calor, que dá para pegar de volta;
+- sussurra, em momentos que ninguém marcou, frases montadas na hora a partir do que viu.
+
+Ele nunca mexe nas salas dos guardiões nem nas salas calmas de broto, e toda mudança de chão sai de
+um conjunto conferido para ser passável nos dois sentidos. As falas saem de um repertório escrito, e
+não de um modelo. Em `config.js`, `director` desliga tudo e os valores `director_*` ajustam o ritmo.
+
+![A ponte que o Sono abre quando fecha o atalho](docs/screenshots/sono-ponte.jpg)
+
 ## Arquivos
 
 | Arquivo | O que é |
@@ -67,6 +88,7 @@ para instalar e atualizar o protótipo, não para publicar em loja.
 | `world.js` | As onze salas, em blocos de 40 px, os ecos e as frases dos inimigos |
 | `art.js` | A arte, toda desenhada em código: camadas, figuras, o vórtice |
 | `sfx.js` | O som, gerado por código: vento, notas, efeitos |
+| `director.js` | O Sono: o diretor que acompanha o jogador, muda inimigos e caminhos e sussurra |
 | `android/` | O app Android: uma tela cheia que abre o jogo |
 | `docs/game-brief.md` | O brief de uma página que deu origem ao jogo |
 | `docs/screenshots/` | Imagens do jogo |
@@ -89,6 +111,8 @@ Com `?room=` o jogo não grava save.
 Protótipo. A primeira versão foi jogada pelo dono do projeto; as novidades da segunda rodada (golpe
 para baixo, fúria dos guardiões, inimigos que mudam, as três salas novas, a Rainha, os ecos, câmera
 e vibração no celular, controle) foram conferidas só por passos roteirizados, não por jogo real. A
-dificuldade vem de valores de partida do gênero; o som nunca foi ouvido por quem o escreveu.
+dificuldade vem de valores de partida do gênero; o som nunca foi ouvido por quem o escreveu. O Sono
+(terceira rodada) também só foi conferido por passos roteirizados: cada caminho alterado foi
+atravessado nos dois sentidos, mas se as mudanças parecem justas ou cansam é coisa que só jogando.
 
 Construído com o fluxo `/prototype` do template Claude Code Game Studios.

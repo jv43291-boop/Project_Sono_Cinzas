@@ -15,6 +15,7 @@ quero um jogo com o mesmo estilo de hollow knight com graficos bonitos e um clim
 After play: eu joguei ficou muito bom bem melhor do que eu imaginei mais quero que melhore se tiver ideias
 After play: melhorias escolhidas: Peso da luta, Os que lembram, Mais mundo, Celular. Melhor momento: O visual e o clima. Pior momento: Nada incomodou.
 After play: pensei na ia se adaptando no jogo tipo mudando inimigos e mapas inesperadamente falando coisas em momentos não calculados
+After play: diretor sem modelo, rodando offline: pode fazer
 
 **Pitch:** Uma figura pequena atravessa uma floresta queimada e silenciosa, onde cada morte é um pesadelo do qual você acorda e os poucos que restam lembram de já ter te matado.
 
@@ -69,6 +70,7 @@ Leads: metroidvania conduz o mapa, as travas, os controles e a câmera · soulsl
 - [x] Área nova: A Garganta, O Lago de Fuligem e O Ninho, com a Rainha de Fuligem e as asas de cinza (segundo pulo)
 - [x] Sete ecos espalhados que contam o que queimou a floresta
 - [ ] No toque, câmera mais perto (figura maior), vibração ao levar dano e controle Bluetooth
+- [x] O Sono, um diretor offline: acompanha onde você morre, por onde passa, quanto demora e que golpe usa mais; ao trocar de sala ou entre uma morte e outra muda inimigos e caminhos; sussurra frases montadas na hora
 
 ## Your systems
 - acordar como se tivesse tido um pesadelo, em áreas com saves automáticos · in the slice
@@ -78,6 +80,7 @@ Leads: metroidvania conduz o mapa, as travas, os controles e a câmera · soulsl
 - escala progressiva derrotando inimigos · thin stand-in *(guessed)*
 - inimigos que se adaptam a como você joga · in the slice
 - uma história contada pelos lugares (ecos) · in the slice
+- ia se adaptando no jogo, mudando inimigos e mapas, falando em momentos não calculados · thin stand-in (um diretor por regras, sem modelo: as falas saem de um repertório escrito e as mudanças de chão de um conjunto conferido)
 
 ## Keep
 - o visual e o clima *(you said)*
@@ -93,7 +96,7 @@ Leads: metroidvania conduz o mapa, as travas, os controles e a câmera · soulsl
 - Amuletos que mudam seus movimentos: add it as a feature
 - Armas, armaduras e builds: add it as a feature
 - O objetivo final da história: grow it
-- IA dentro do jogo, mudando inimigos e mapas sem aviso e falando em momentos não calculados: add it as a feature
+- IA com um modelo de linguagem de verdade dentro do jogo (pede um servidor pequeno que guarde a chave, e internet): add it as a feature
 - Um app Android instalável (APK na loja): não é construído aqui; no lugar, o jogo roda no navegador do Android com controles de toque, que nenhuma checagem automática joga
 
 ## Build order
