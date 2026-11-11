@@ -167,6 +167,11 @@ function startAudio() {
 }
 function setMuted(m) { muted = m; if (audio) audio.out.gain.value = m ? 0 : tune.volume; }
 addEventListener('tune', () => setMuted(muted)); // the tweak panel (an add-on), when added, moved a value: the volume follows
+// Página oculta (app em segundo plano, aba trocada): o jogo pausa e o som para; ao voltar, o som volta.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { down.clear(); if (scene === 'play' && state.mode === 'play') scene = 'pause'; if (audio && audio.ac.suspend) audio.ac.suspend(); }
+  else if (audio && audio.ac.state === 'suspended') audio.ac.resume();
+});
 
 // ---- O progresso guardado: nada do que você ganhou se perde ---------------------------
 const SAVE_KEY = 'sono-de-cinza-v1';

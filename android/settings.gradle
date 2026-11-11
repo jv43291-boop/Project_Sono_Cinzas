@@ -1,0 +1,17 @@
+// O app Android do Sono de Cinza: uma tela cheia que abre o jogo da raiz do repositório.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'SonoDeCinza'
+include ':app'

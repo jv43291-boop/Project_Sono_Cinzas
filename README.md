@@ -24,6 +24,20 @@ Abra o `index.html` no navegador. Não precisa de servidor, instalação nem int
 
 No Android os botões aparecem no primeiro toque na tela. O progresso fica salvo no próprio navegador.
 
+## APK para Android
+
+O APK mais recente fica sempre no mesmo endereço:
+
+https://github.com/jv43291-boop/Project_Sono_Cinzas/releases/download/apk/sono-de-cinza.apk
+
+Baixe no celular e abra o arquivo para instalar; o Android pede para permitir a instalação de apps
+dessa fonte. Uma versão nova instala por cima da antiga e mantém o progresso.
+
+O GitHub Actions monta o APK a cada mudança no jogo ou na pasta `android/`
+(`.github/workflows/apk.yml`). O app é só uma tela cheia que abre o mesmo `index.html` do navegador.
+Ele é assinado com uma chave de teste guardada no repositório (`android/chave-de-teste.jks`): serve
+para instalar e atualizar o protótipo, não para publicar em loja.
+
 ## O que tem na fatia
 
 - Oito salas ligadas, com três brotos de save automático, um atalho e dois segredos.
@@ -42,6 +56,7 @@ No Android os botões aparecem no primeiro toque na tela. O progresso fica salvo
 | `world.js` | As oito salas, em blocos de 40 px, e as frases dos inimigos |
 | `art.js` | A arte, toda desenhada em código: camadas, figuras, o vórtice |
 | `sfx.js` | O som, gerado por código: vento, notas, efeitos |
+| `android/` | O app Android: uma tela cheia que abre o jogo |
 | `docs/game-brief.md` | O brief de uma página que deu origem ao jogo |
 | `docs/screenshots/` | Imagens do jogo |
 | `references/notes.md` | O que cada imagem de referência deu ao visual |

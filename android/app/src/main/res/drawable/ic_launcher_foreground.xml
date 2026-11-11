@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A brasa: o que a figura carrega no peito. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#5B2CA6"
+        android:fillAlpha="0.55"
+        android:pathData="M54,54m-27,0a27,27 0,1 1,54 0a27,27 0,1 1,-54 0" />
+    <path
+        android:fillColor="#FFB347"
+        android:pathData="M54,30C64,43 70,52 70,61A16,16 0,0 1,38 61C38,52 44,43 54,30Z" />
+    <path
+        android:fillColor="#FFF1D0"
+        android:pathData="M54,50C58,57 60,61 60,65A6,6 0,0 1,48 65C48,61 50,57 54,50Z" />
+</vector>

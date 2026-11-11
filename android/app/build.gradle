@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+// O jogo mora na raiz do repositório (index.html e os .js). Antes de montar, ele é copiado
+// para dentro do app; assim o navegador e o APK usam sempre os mesmos arquivos.
+def webOut = layout.buildDirectory.dir('web-assets')
+tasks.register('copyWeb', Copy) {
+    from(rootProject.file('..')) {
+        include 'index.html', 'config.js', 'world.js', 'art.js', 'sfx.js'
+    }
+    into webOut
+}
+
+android {
+    namespace 'io.github.jv43291boop.sonodecinza'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.github.jv43291boop.sonodecinza'
+        minSdk 26
+        targetSdk 34
+        versionCode((System.getenv('VERSION_CODE') ?: '1') as Integer)
+        versionName(System.getenv('VERSION_NAME') ?: '0.1')
+    }
+
+    // Chave de teste, guardada no repositório de propósito: todo APK sai com a mesma assinatura,
+    // então uma versão nova instala por cima da antiga sem apagar o progresso.
+    // Não serve para publicar em loja.
+    signingConfigs {
+        teste {
+            storeFile rootProject.file('chave-de-teste.jks')
+            storePassword 'sonodecinza'
+            keyAlias 'teste'
+            keyPassword 'sonodecinza'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.teste
+        }
+    }
+    sourceSets {
+        main {
+            assets.srcDirs = [webOut.get().asFile]
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+tasks.named('preBuild') {
+    dependsOn 'copyWeb'
+}

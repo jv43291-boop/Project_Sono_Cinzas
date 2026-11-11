@@ -1,0 +1,68 @@
+# Monta o APK do Sono de Cinza a cada mudança no jogo ou no app Android,
+# e o publica na release "apk", que tem sempre o mesmo link para baixar.
+name: APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - '*.js'
+      - 'android/**'
+      - '.github/workflows/apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Montar o APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 0.1.${{ github.run_number }}
+        run: gradle -p android assembleDebug --no-daemon --stacktrace
+
+      - name: Nomear o arquivo
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk sono-de-cinza.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sono-de-cinza-apk
+          path: sono-de-cinza.apk
+
+      - name: Publicar na release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTAS: |
+            Sono de Cinza para Android, versão 0.1.${{ github.run_number }}.
+
+            Baixe o arquivo sono-de-cinza.apk no celular e abra para instalar. O Android pede para
+            permitir a instalação de apps desta fonte. Uma versão nova instala por cima da antiga
+            e mantém o progresso.
+
+            Protótipo assinado com uma chave de teste: não é uma versão de loja.
+        run: |
+          if gh release view apk >/dev/null 2>&1; then
+            gh release upload apk sono-de-cinza.apk --clobber
+            gh release edit apk --title "Sono de Cinza para Android" --notes "$NOTAS"
+          else
+            gh release create apk sono-de-cinza.apk --target "$GITHUB_SHA" --title "Sono de Cinza para Android" --notes "$NOTAS"
+          fi
